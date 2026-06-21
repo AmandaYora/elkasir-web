@@ -295,7 +295,7 @@ Unauthenticated, **rate-limited per IP**. Customers reach these by scanning a ta
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/api/v1/webhooks/xendit` | provider token (verified in handler) | Receive Xendit payment callbacks. |
+| POST | `/api/v1/webhooks/payment` | provider signature (verified in payment module) | Receive QRIS payment callbacks (Tripay/Midtrans, provider-agnostic). |
 
 Verifies the provider token, dedupes by event id (`webhook_events`), and on a paid event triggers
 self-order fulfilment (stock decrement + transaction). Returns `data` → `{ "received": "ok" }`

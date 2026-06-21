@@ -13,8 +13,8 @@ import (
 const createSelfOrder = `-- name: CreateSelfOrder :exec
 INSERT INTO self_orders (
   id, store_id, table_id, status, payment_method, payment_status, claim_code,
-  subtotal, total, customer_note, expires_at
-) VALUES (?, ?, ?, 'placed', ?, ?, ?, ?, ?, ?, ?)
+  subtotal, service_charge, gateway_fee, tax, total, customer_note, expires_at
+) VALUES (?, ?, ?, 'placed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateSelfOrderParams struct {
@@ -25,6 +25,9 @@ type CreateSelfOrderParams struct {
 	PaymentStatus SelfOrdersPaymentStatus `json:"paymentStatus"`
 	ClaimCode     sql.NullString          `json:"claimCode"`
 	Subtotal      int64                   `json:"subtotal"`
+	ServiceCharge int64                   `json:"serviceCharge"`
+	GatewayFee    int64                   `json:"gatewayFee"`
+	Tax           int64                   `json:"tax"`
 	Total         int64                   `json:"total"`
 	CustomerNote  sql.NullString          `json:"customerNote"`
 	ExpiresAt     sql.NullTime            `json:"expiresAt"`
@@ -39,6 +42,9 @@ func (q *Queries) CreateSelfOrder(ctx context.Context, arg CreateSelfOrderParams
 		arg.PaymentStatus,
 		arg.ClaimCode,
 		arg.Subtotal,
+		arg.ServiceCharge,
+		arg.GatewayFee,
+		arg.Tax,
 		arg.Total,
 		arg.CustomerNote,
 		arg.ExpiresAt,
@@ -119,7 +125,7 @@ func (q *Queries) FindTableByCode(ctx context.Context, code string) (DiningTable
 }
 
 const getSelfOrder = `-- name: GetSelfOrder :one
-SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at FROM self_orders WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at, service_charge, gateway_fee, tax FROM self_orders WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetSelfOrderParams struct {
@@ -145,12 +151,15 @@ func (q *Queries) GetSelfOrder(ctx context.Context, arg GetSelfOrderParams) (Sel
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceCharge,
+		&i.GatewayFee,
+		&i.Tax,
 	)
 	return i, err
 }
 
 const getSelfOrderByClaimCode = `-- name: GetSelfOrderByClaimCode :one
-SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at FROM self_orders WHERE store_id = ? AND claim_code = ? LIMIT 1
+SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at, service_charge, gateway_fee, tax FROM self_orders WHERE store_id = ? AND claim_code = ? LIMIT 1
 `
 
 type GetSelfOrderByClaimCodeParams struct {
@@ -176,12 +185,15 @@ func (q *Queries) GetSelfOrderByClaimCode(ctx context.Context, arg GetSelfOrderB
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceCharge,
+		&i.GatewayFee,
+		&i.Tax,
 	)
 	return i, err
 }
 
 const getSelfOrderByID = `-- name: GetSelfOrderByID :one
-SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at FROM self_orders WHERE id = ? LIMIT 1
+SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code, subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at, service_charge, gateway_fee, tax FROM self_orders WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetSelfOrderByID(ctx context.Context, id string) (SelfOrder, error) {
@@ -202,6 +214,9 @@ func (q *Queries) GetSelfOrderByID(ctx context.Context, id string) (SelfOrder, e
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ServiceCharge,
+		&i.GatewayFee,
+		&i.Tax,
 	)
 	return i, err
 }

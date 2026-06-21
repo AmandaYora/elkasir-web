@@ -212,8 +212,11 @@ Customers scan a QR encoding their table `code` and order without logging in. Th
 | `GET  /api/v1/public/order/status/{selfOrderId}`      | Poll order + payment status. |
 | `POST /api/v1/public/order/{selfOrderId}/simulate-paid` | **DEV only** — mark a pending QRIS order paid without a real gateway (returns `404` when a live payment provider is enabled). |
 
-A separate **webhook** endpoint (`POST /api/v1/webhooks/xendit`) is also unauthenticated at the
-middleware layer — its authenticity is verified inside the handler via the provider token.
+A separate **webhook** endpoint (`POST /api/v1/webhooks/payment`) is also unauthenticated at the
+middleware layer — its authenticity is verified inside the `payment` module by the **active
+provider**: Tripay via the `X-Callback-Signature` header (HMAC-SHA256 of the raw body with the
+private key), or Midtrans via the `signature_key` field
+(`SHA512(order_id + status_code + gross_amount + ServerKey)`).
 
 Admin/staff-facing self-order management endpoints (list incoming, update status, redeem, redeem
 checkout) **do** require authentication. See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md).

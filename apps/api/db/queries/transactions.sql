@@ -1,9 +1,9 @@
 -- name: CreateTransaction :exec
 INSERT INTO transactions (
   id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source,
-  payment_method, status, subtotal, discount, tax, total, amount_received, change_amount,
-  discount_approved_by, customer_note, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  payment_method, status, subtotal, discount, tax, service_charge, gateway_fee, total,
+  amount_received, change_amount, discount_approved_by, customer_note, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: CreateTransactionItem :exec
 INSERT INTO transaction_items (

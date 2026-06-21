@@ -89,7 +89,7 @@ classify every transaction:
   - `self_order` — generated from a customer self-order.
 - **Payment method** (`paymentMethod`):
   - `cash` — paid in physical cash; `amountReceived` and `changeAmount` apply.
-  - `qris` — paid digitally via QRIS (through Xendit).
+  - `qris` — paid digitally via QRIS (through the active gateway: Tripay/Midtrans).
 
 ### Admin user vs. Staff
 Two distinct kinds of accounts, authenticated as two distinct **actor types**:
@@ -118,7 +118,35 @@ Indonesia's unified national QR-payment standard. A single QR code can be scanne
 paid from any compliant mobile banking or e-wallet app. In Elkasir, QRIS is the digital
 payment method for both self-orders and counter sales.
 
-### Xendit
-The third-party payment gateway Elkasir integrates with to generate QRIS payments and
-receive payment-status confirmations. The `payment` module wraps Xendit; a `simulated`
-mode allows development without live charges.
+### Payment gateway (Tripay / Midtrans)
+The third-party QRIS provider Elkasir integrates with to generate payments and receive
+payment-status confirmations via callback/webhook. The `payment` module is **provider-agnostic**:
+exactly one provider is active, chosen by `PAYMENT_PROVIDER` (`tripay` | `midtrans`), with
+`PAYMENT_ENV` selecting sandbox vs production.
+
+- **Tripay** (active) — Closed Payment QRIS; charge via `transaction/create` (Bearer API Key,
+  `signature = HMAC-SHA256(merchantCode + merchantRef + amount, privateKey)`). Callbacks are
+  verified by the `X-Callback-Signature` header (HMAC-SHA256 of the raw body); status `PAID` means paid.
+- **Midtrans** (selectable) — Core API QRIS; charge via `/v2/charge`. Webhooks are verified by
+  `signature_key` (`SHA512(order_id + status_code + gross_amount + ServerKey)`); status `settlement` means paid.
+
+A `simulated` mode (active provider's credentials empty) allows development without live charges.
+
+### Rincian biaya (pricing breakdown)
+Setiap transaksi/self-order memecah pembayaran menjadi:
+- **Subtotal** — total harga barang (penjualan).
+- **Service (biaya layanan)** — `2% × Subtotal`, **dibulatkan ke atas** (sisa thd ribuan ≤500→x.500,
+  >500→x.000 berikutnya). Berlaku untuk **semua** transaksi (cash/QRIS, kasir/self-order). Margin merchant.
+- **Gateway fee (biaya gateway)** — biaya provider QRIS (Tripay live / Midtrans), **hanya untuk QRIS**;
+  0 untuk kasir/cash. Pass-through ke gateway.
+- **Layanan** — baris yang ditampilkan ke pelanggan = `Service + Gateway fee`.
+- **PPN (pajak)** — `taxPercent% × Subtotal` bila `taxEnabled` (di menu Pengaturan); default mati.
+- **Total** — `Subtotal − Diskon + Service + Gateway fee + PPN`. Inilah yang ditagih/dibayar.
+
+Pemisahan keuangan (laporan) memakai 3 bucket: **Penjualan** (subtotal−diskon), **Layanan**
+(service + gateway), **Pajak** (PPN) — ketiganya berjumlah = revenue (SUM total).
+
+### Pengaturan (Settings)
+Konfigurasi per-toko milik modul `settings` (menu admin "Pengaturan"): ambang kontrol (diskon
+maks, biaya operasional, toleransi selisih kas), flag fitur (self-order, QRIS), dan **pajak &
+layanan** (`taxEnabled`, `taxPercent`, `servicePercent`). Modul lain membaca via `settingsclient`.

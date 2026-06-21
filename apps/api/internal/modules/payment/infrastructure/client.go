@@ -1,16 +1,14 @@
-// Package infrastructure implements paymentclient.Client: membuat charge QRIS
-// (Xendit/simulasi), mencatat baris payments, serta verifikasi/parse/idempotensi webhook
-// (tabel webhook_events). Semua akses DB lewat uow.Q(ctx) sehingga konsisten dengan
-// transaksi aktif (bila ada).
+// apiClient mengimplementasikan paymentclient.Client di atas SATU gateway aktif (lihat
+// gateway.go). Bagian provider-independent ada di sini: pencatatan tabel payments dan
+// idempotensi webhook (tabel webhook_events). Semua akses DB lewat uow.Q(ctx) agar konsisten
+// dengan transaksi aktif (bila ada).
 package infrastructure
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	paymentclient "github.com/elkasir/api/internal/modules/payment/contracts"
 	"github.com/elkasir/api/internal/platform/config"
@@ -19,54 +17,75 @@ import (
 	uow "github.com/elkasir/api/internal/platform/uow"
 )
 
-const providerXendit = "xendit"
-
 type apiClient struct {
-	xen *xenditClient
-	uow *uow.Manager
+	gw       gateway // nil = mode simulasi (tak ada provider aktif)
+	provider string  // label provider untuk kolom payments/webhook_events
+	uow      *uow.Manager
 }
 
-// NewClient membuat implementasi paymentclient.Client.
-func NewClient(cfg config.Xendit, m *uow.Manager) paymentclient.Client {
-	return &apiClient{xen: newXendit(cfg), uow: m}
+// NewClient membuat implementasi paymentclient.Client dengan gateway aktif terpilih.
+func NewClient(cfg config.Payment, m *uow.Manager) paymentclient.Client {
+	gw := selectGateway(cfg)
+	provider := cfg.ActiveProvider()
+	if gw != nil {
+		provider = gw.name()
+	}
+	// payments.provider adalah ENUM — pastikan nilai valid (mode simulasi tanpa provider).
+	if provider != "tripay" && provider != "midtrans" {
+		provider = "midtrans"
+	}
+	return &apiClient{gw: gw, provider: provider, uow: m}
 }
 
 var _ paymentclient.Client = (*apiClient)(nil)
 
-func (c *apiClient) Enabled() bool { return c.xen.enabled() }
+func (c *apiClient) Enabled() bool { return c.gw != nil }
 
-// VerifyWebhook: skema verifikasi spesifik provider hidup DI SINI (bukan di selforder).
-// Xendit memakai header statis x-callback-token; provider lain bisa memakai signature body.
-func (c *apiClient) VerifyWebhook(header http.Header, _ []byte) bool {
-	return c.xen.verifyWebhook(header.Get("x-callback-token"))
+// QuoteFee mengembalikan biaya gateway untuk `amount`. 0 saat mode simulasi (gateway nil).
+func (c *apiClient) QuoteFee(ctx context.Context, amount int64) (int64, error) {
+	if c.gw == nil {
+		return 0, nil
+	}
+	return c.gw.quoteFee(ctx, amount)
+}
+
+// VerifyWebhook: skema verifikasi spesifik provider hidup di gateway aktif (bukan di selforder).
+func (c *apiClient) VerifyWebhook(header http.Header, body []byte) bool {
+	return c.gw != nil && c.gw.verifyWebhook(header, body)
+}
+
+func (c *apiClient) ParseWebhook(body []byte) (paymentclient.WebhookEvent, error) {
+	if c.gw == nil {
+		return paymentclient.WebhookEvent{}, paymentclient.ErrInvalidPayload
+	}
+	return c.gw.parseWebhook(body)
 }
 
 // CreateCharge membuat tagihan QRIS untuk self-order dan mencatat baris payments.
-// Pencatatan payments bersifat best-effort (selaras perilaku lama) — webhook adalah
-// sumber kebenaran status bayar.
+// Pencatatan payments bersifat best-effort — webhook adalah sumber kebenaran status bayar.
 func (c *apiClient) CreateCharge(ctx context.Context, storeID, orderID string, amount int64) (paymentclient.Charge, error) {
-	if !c.xen.enabled() {
+	if c.gw == nil {
 		c.recordPayment(ctx, storeID, orderID, amount, sql.NullString{})
 		return paymentclient.Charge{Simulated: true}, nil
 	}
-	qr, err := c.xen.createDynamicQR(ctx, orderID, amount)
+	qr, err := c.gw.createCharge(ctx, orderID, amount)
 	if err != nil {
 		return paymentclient.Charge{}, err
 	}
-	c.recordPayment(ctx, storeID, orderID, amount, sql.NullString{String: qr.ID, Valid: true})
-	return paymentclient.Charge{QRString: qr.QRString, ProviderRef: qr.ID}, nil
+	c.recordPayment(ctx, storeID, orderID, amount, sql.NullString{String: qr.Ref, Valid: qr.Ref != ""})
+	return paymentclient.Charge{QRString: qr.QRString, QRImageURL: qr.QRImageURL, ProviderRef: qr.Ref}, nil
 }
 
 func (c *apiClient) recordPayment(ctx context.Context, storeID, orderID string, amount int64, providerRef sql.NullString) {
 	_ = c.uow.Q(ctx).CreatePayment(ctx, sqlcgen.CreatePaymentParams{
 		ID: id.New(), StoreID: storeID, SelfOrderID: orderID,
-		ProviderRef: providerRef, Amount: amount,
+		Provider: sqlcgen.PaymentsProvider(c.provider), ProviderRef: providerRef, Amount: amount,
 		Status: sqlcgen.PaymentsStatusPending, RawPayload: sql.NullString{},
 	})
 }
 
 func (c *apiClient) WebhookSeen(ctx context.Context, eventID string) (bool, error) {
-	_, err := c.uow.Q(ctx).GetWebhookEvent(ctx, sqlcgen.GetWebhookEventParams{Provider: providerXendit, EventID: eventID})
+	_, err := c.uow.Q(ctx).GetWebhookEvent(ctx, sqlcgen.GetWebhookEventParams{Provider: c.provider, EventID: eventID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -75,49 +94,6 @@ func (c *apiClient) WebhookSeen(ctx context.Context, eventID string) (bool, erro
 
 func (c *apiClient) MarkWebhookSeen(ctx context.Context, eventID string) error {
 	return c.uow.Q(ctx).CreateWebhookEvent(ctx, sqlcgen.CreateWebhookEventParams{
-		ID: id.New(), Provider: providerXendit, EventID: eventID,
+		ID: id.New(), Provider: c.provider, EventID: eventID,
 	})
-}
-
-// ── Parsing payload Xendit ───────────────────────────────────
-type webhookPayload struct {
-	Event string `json:"event"`
-	ID    string `json:"id"`
-	Data  struct {
-		ID          string `json:"id"`
-		QRID        string `json:"qr_id"`
-		ReferenceID string `json:"reference_id"`
-		Status      string `json:"status"`
-		Amount      int64  `json:"amount"`
-	} `json:"data"`
-}
-
-func (c *apiClient) ParseWebhook(body []byte) (paymentclient.WebhookEvent, error) {
-	var p webhookPayload
-	if err := json.Unmarshal(body, &p); err != nil {
-		return paymentclient.WebhookEvent{}, paymentclient.ErrInvalidPayload
-	}
-	return paymentclient.WebhookEvent{
-		EventID:  firstNonEmpty(p.ID, p.Data.ID, p.Data.QRID+":"+p.Data.ReferenceID),
-		OrderRef: p.Data.ReferenceID,
-		Paid:     isPaidStatus(p.Data.Status),
-	}, nil
-}
-
-func isPaidStatus(s string) bool {
-	switch strings.ToUpper(s) {
-	case "SUCCEEDED", "COMPLETED", "PAID", "SUCCESS":
-		return true
-	default:
-		return false
-	}
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" && v != ":" {
-			return v
-		}
-	}
-	return ""
 }

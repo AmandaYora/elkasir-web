@@ -3,6 +3,9 @@
 export interface DashboardSummary {
   txCount: number;
   revenue: number;
+  salesTotal: number; // penjualan (subtotal − diskon)
+  serviceTotal: number; // layanan (service + biaya gateway)
+  taxTotal: number; // pajak (PPN)
   cashTotal: number;
   qrisTotal: number;
 }

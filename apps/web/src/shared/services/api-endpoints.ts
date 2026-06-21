@@ -28,4 +28,5 @@ export const endpoints = {
   selfOrders: "/self-orders",
   publicOrder: "/public/order",
   uploads: "/uploads",
+  settings: "/settings",
 } as const;

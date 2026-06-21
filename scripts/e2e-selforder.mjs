@@ -76,13 +76,17 @@ async function productStock(adminToken, productId) {
   const orderA = placeA.json?.data?.order;
   ok(orderA?.paymentMethod === 'qris', 'order recorded as qris');
   ok(orderA?.paymentStatus === 'pending', 'qris order starts pending');
-  ok(orderA?.total === price * 2, `total = price*2 (${price * 2})`);
-  // Payment-init contract: a real Xendit gateway returns a qrString; in dev (gateway
-  // not configured) it returns simulated=true and the frontend renders a fallback QR
-  // (elkasir:order:<id>) + a "mark paid" button. Either way the table can pay.
+  // Subtotal = harga barang; total = subtotal + layanan(+gateway QRIS) + PPN (≥ subtotal).
+  ok(orderA?.subtotal === price * 2, `subtotal = price*2 (${price * 2})`);
+  ok(orderA?.total >= orderA?.subtotal, `total (${orderA?.total}) ≥ subtotal (${orderA?.subtotal})`);
+  ok(orderA?.total === orderA?.subtotal + orderA?.serviceLine + orderA?.tax,
+    'total = subtotal + layanan + PPN (breakdown konsisten)');
+  // Payment-init contract: a live gateway (Tripay/Midtrans) returns a qrImageUrl (QRIS image);
+  // in dev (gateway not configured) it returns simulated=true and the frontend renders a
+  // fallback QR (elkasir:order:<id>) + a "mark paid" button. Either way the table can pay.
   const payInit = placeA.json?.data;
-  ok(payInit?.simulated === true || !!payInit?.qrString,
-    `payment init is payable at the table (simulated=${payInit?.simulated}, qrString=${payInit?.qrString ? 'present' : 'empty'})`);
+  ok(payInit?.simulated === true || !!payInit?.qrImageUrl || !!payInit?.qrString,
+    `payment init is payable at the table (simulated=${payInit?.simulated}, qr=${payInit?.qrImageUrl || payInit?.qrString ? 'present' : 'empty'})`);
 
   const statusA1 = await api(`/public/order/status/${orderA.id}`);
   ok(statusA1.json?.data?.paymentStatus === 'pending', 'status poll shows pending before payment');

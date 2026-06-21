@@ -20,12 +20,14 @@ import { ApiError } from "@/shared/types/api";
 import {
   QrisPaymentPanel,
   CashierBarcodePanel,
+  OrderBreakdown,
 } from "@/modules/self-order/components/SelfOrderPayment";
 import { publicOrderService } from "@/modules/self-order/services/public-order.service";
 import type {
   PlaceResult,
   PublicMenu,
   PublicSelfOrderStatus,
+  QuoteResult,
 } from "@/modules/self-order/types/self-order.types";
 
 type Step = "menu" | "review" | "qris" | "cashier";
@@ -93,6 +95,31 @@ export default function PublicOrderPage() {
   );
   const totalItems = lines.reduce((s, l) => s + l.qty, 0);
   const total = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+
+  // Rincian biaya (skenario QRIS) untuk ditampilkan di langkah review sebelum pesanan dibuat.
+  // Angka final & otoritatif tetap diambil dari pesanan yang sudah dibuat (placed.order).
+  const [quote, setQuote] = useState<QuoteResult | null>(null);
+  useEffect(() => {
+    if (step !== "review" || lines.length === 0) {
+      setQuote(null);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      publicOrderService
+        .quote(code, {
+          items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty, note: "" })),
+          paymentMethod: "qris",
+        })
+        .then((q) => active && setQuote(q))
+        .catch(() => active && setQuote(null));
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, lines, code]);
 
   const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
   const dec = (id: string) =>
@@ -419,13 +446,26 @@ export default function PublicOrderPage() {
             />
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-            <span className="text-sm text-muted">Total</span>
-            <span className="text-lg font-bold">{formatIDR(total)}</span>
-          </div>
+          {quote ? (
+            <OrderBreakdown
+              subtotal={quote.subtotal}
+              serviceLine={quote.serviceLine}
+              tax={quote.tax}
+              total={quote.total}
+            />
+          ) : (
+            <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
+              <span className="text-sm text-muted">Subtotal</span>
+              <span className="text-lg font-bold">{formatIDR(total)}</span>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="px-1 text-sm font-medium">Pilih cara pembayaran</div>
+            <p className="px-1 text-xs text-muted">
+              Layanan & pajak (bila ada) ditambahkan ke total. Biaya QRIS hanya berlaku untuk
+              pembayaran QRIS.
+            </p>
             <button
               onClick={() => place("qris")}
               disabled={placing}
@@ -474,10 +514,20 @@ export default function PublicOrderPage() {
           <QrisPaymentPanel
             total={placed.order.total}
             qrValue={placed.qrString || `elkasir:order:${placed.order.id}`}
+            qrImageUrl={placed.qrImageUrl}
             status={qrisPaid ? "paid" : "waiting"}
             simulated={placed.simulated}
             onSimulatePaid={simulatePaid}
           />
+
+          {!qrisPaid && (
+            <OrderBreakdown
+              subtotal={placed.order.subtotal}
+              serviceLine={placed.order.serviceLine}
+              tax={placed.order.tax}
+              total={placed.order.total}
+            />
+          )}
 
           {qrisPaid && (
             <>
@@ -499,6 +549,12 @@ export default function PublicOrderPage() {
             claimCode={placed.claimCode || placed.order.claimCode || ""}
             total={placed.order.total}
             tableName={placed.order.tableName || menu.table.name}
+          />
+          <OrderBreakdown
+            subtotal={placed.order.subtotal}
+            serviceLine={placed.order.serviceLine}
+            tax={placed.order.tax}
+            total={placed.order.total}
           />
           <OrderSummary />
           <p className="text-center text-xs text-muted">

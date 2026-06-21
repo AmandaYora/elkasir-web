@@ -220,10 +220,10 @@ Backend module: `report`.
 
 ## 8. Payments
 
-Backend module: `payment` (integrates **Xendit** for **QRIS**).
+Backend module: `payment` (provider-agnostic **QRIS** gateway; **Tripay** active, **Midtrans** selectable via `PAYMENT_PROVIDER`).
 
 ### Scope
-- Generate a QRIS payment for an order (returns a QR string for the customer).
+- Generate a QRIS payment for an order (returns a QR image URL from the active provider for the customer).
 - Track payment status transitions (`pending` → `paid` / `expired` / `failed`).
 - Support a `simulated` path for development without live charges.
 - Cash remains a first-class payment method, settled manually by the cashier.
@@ -231,7 +231,7 @@ Backend module: `payment` (integrates **Xendit** for **QRIS**).
 ### User stories
 - As a **customer**, I want to pay by scanning a QRIS code so that I can settle from
   my mobile banking/e-wallet app.
-- As the **system**, I want to confirm payment via Xendit so that a self-order is
+- As the **system**, I want to confirm payment via the QRIS gateway so that a self-order is
   marked paid and converted to a transaction.
 - As an **owner**, I want unpaid/expired self-orders to be distinguishable from paid
   ones so that I do not fulfil unpaid orders by mistake.

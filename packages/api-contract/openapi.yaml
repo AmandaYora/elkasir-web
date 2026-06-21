@@ -1026,6 +1026,29 @@ paths:
         "422": { $ref: "#/components/responses/Unprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /public/order/{tableCode}/quote:
+    parameters:
+      - { name: tableCode, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Public]
+      operationId: publicQuoteOrder
+      summary: Rincian biaya (subtotal, layanan, PPN, total) sebelum pesanan dibuat
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaceOrderInput" }
+      responses:
+        "200":
+          description: Rincian biaya
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderQuote" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /public/order/status/{selfOrderId}:
     parameters:
       - { name: selfOrderId, in: path, required: true, schema: { type: string } }
@@ -1049,7 +1072,7 @@ paths:
     post:
       tags: [Public]
       operationId: publicSimulatePaid
-      summary: Tandai self-order QRIS lunas (DEV, hanya saat Xendit nonaktif)
+      summary: Tandai self-order QRIS lunas (DEV, hanya saat gateway nonaktif)
       security: []
       responses:
         "200":
@@ -1064,18 +1087,50 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  # ─────────────────────────── Settings ───────────────────────────
+  /settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      summary: Ambil pengaturan toko (semua admin)
+      responses:
+        "200":
+          description: Pengaturan toko
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [Settings]
+      operationId: updateSettings
+      summary: Perbarui pengaturan toko (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Settings" }
+      responses:
+        "200":
+          description: Pengaturan disimpan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ─────────────────────────── Webhook ───────────────────────────
-  /webhooks/xendit:
+  /webhooks/payment:
     post:
       tags: [Webhooks]
-      operationId: xenditWebhook
-      summary: Callback pembayaran Xendit (verifikasi x-callback-token)
+      operationId: paymentWebhook
+      summary: Callback pembayaran QRIS (provider-agnostic — Tripay/Midtrans)
+      description: >-
+        Callback/HTTP notification dari provider pembayaran aktif. Keaslian diverifikasi di
+        module payment sesuai provider: Tripay via header X-Callback-Signature
+        (HMAC-SHA256 atas raw body, private key); Midtrans via signature_key
+        (SHA512(order_id + status_code + gross_amount + ServerKey)).
       security: []
-      parameters:
-        - name: x-callback-token
-          in: header
-          required: false
-          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -1575,7 +1630,10 @@ components:
         status: { type: string }
         subtotal: { type: integer, format: int64 }
         discount: { type: integer, format: int64 }
-        tax: { type: integer, format: int64 }
+        tax: { type: integer, format: int64, description: "PPN" }
+        serviceCharge: { type: integer, format: int64, description: "Biaya layanan 2% (rounded)." }
+        gatewayFee: { type: integer, format: int64, description: "Biaya gateway QRIS (0 utk cash/kasir)." }
+        serviceLine: { type: integer, format: int64, description: "Layanan = serviceCharge + gatewayFee." }
         total: { type: integer, format: int64 }
         amountReceived: { type: integer, format: int64 }
         changeAmount: { type: integer, format: int64 }
@@ -1662,6 +1720,9 @@ components:
       properties:
         txCount: { type: integer, format: int64 }
         revenue: { type: integer, format: int64 }
+        salesTotal: { type: integer, format: int64, description: "Penjualan = subtotal − diskon." }
+        serviceTotal: { type: integer, format: int64, description: "Layanan = service + biaya gateway." }
+        taxTotal: { type: integer, format: int64, description: "Pajak (PPN)." }
         cashTotal: { type: integer, format: int64 }
         qrisTotal: { type: integer, format: int64 }
 
@@ -1753,6 +1814,10 @@ components:
         paymentStatus: { type: string, enum: [unpaid, pending, paid] }
         claimCode: { type: string }
         subtotal: { type: integer, format: int64 }
+        service: { type: integer, format: int64, description: "Biaya layanan 2% (rounded)." }
+        gatewayFee: { type: integer, format: int64, description: "Biaya gateway QRIS (0 utk cash)." }
+        serviceLine: { type: integer, format: int64, description: "Layanan = service + gatewayFee." }
+        tax: { type: integer, format: int64, description: "PPN" }
         total: { type: integer, format: int64 }
         customerNote: { type: string }
         transactionId: { type: string }
@@ -1760,6 +1825,32 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/SelfOrderItem" }
+
+    OrderQuote:
+      type: object
+      required: [subtotal, service, gatewayFee, serviceLine, tax, total]
+      properties:
+        subtotal: { type: integer, format: int64 }
+        service: { type: integer, format: int64 }
+        gatewayFee: { type: integer, format: int64 }
+        serviceLine: { type: integer, format: int64, description: "Layanan = service + gatewayFee." }
+        tax: { type: integer, format: int64, description: "PPN" }
+        total: { type: integer, format: int64 }
+
+    Settings:
+      type: object
+      required:
+        [maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance,
+         featureSelfOrder, featureQris, taxEnabled, taxPercent, servicePercent]
+      properties:
+        maxDiscountPercent: { type: integer, format: int32 }
+        maxOperationalExpense: { type: integer, format: int64 }
+        cashVarianceTolerance: { type: integer, format: int64 }
+        featureSelfOrder: { type: boolean }
+        featureQris: { type: boolean }
+        taxEnabled: { type: boolean, description: "Aktifkan PPN." }
+        taxPercent: { type: integer, format: int32, description: "PPN %, mis. 11." }
+        servicePercent: { type: integer, format: int32, description: "Biaya layanan %, mis. 2." }
 
     SelfOrderTable:
       type: object
@@ -1824,9 +1915,10 @@ components:
       required: [order]
       properties:
         order: { $ref: "#/components/schemas/SelfOrder" }
-        qrString: { type: string, description: "QRIS string (jalur QRIS via Xendit)." }
+        qrString: { type: string, description: "Payload QRIS mentah (dirender jadi QR di klien; dipakai pada mode simulasi/fallback)." }
+        qrImageUrl: { type: string, description: "URL gambar QR siap-tampil dari provider aktif (Tripay qr_url / Midtrans actions)." }
         claimCode: { type: string, description: "Kode klaim (jalur bayar-di-kasir)." }
-        simulated: { type: boolean, description: "True bila Xendit nonaktif (mode dev)." }
+        simulated: { type: boolean, description: "True bila gateway nonaktif (mode dev)." }
 
     RedeemCheckoutResult:
       type: object

@@ -28,6 +28,3 @@ UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS 
 
 -- name: GetFirstStore :one
 SELECT * FROM stores ORDER BY created_at ASC LIMIT 1;
-
--- name: GetSettingsByStore :one
-SELECT * FROM settings WHERE store_id = ? LIMIT 1;

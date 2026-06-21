@@ -13,6 +13,7 @@ import (
 	shareddomain "github.com/elkasir/api/internal/domain"
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	productclient "github.com/elkasir/api/internal/modules/product/contracts"
+	settingsclient "github.com/elkasir/api/internal/modules/settings/contracts"
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
 	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
 	"github.com/elkasir/api/internal/modules/transaction/domain"
@@ -30,11 +31,12 @@ type Service struct {
 	products productclient.Client
 	shifts   shiftclient.Client
 	sales    salesclient.Client
+	settings settingsclient.Client
 	uow      *uow.Manager
 }
 
-func NewService(repo *infrastructure.Repo, productClient productclient.Client, shiftClient shiftclient.Client, salesClient salesclient.Client, uowMgr *uow.Manager) *Service {
-	return &Service{repo: repo, products: productClient, shifts: shiftClient, sales: salesClient, uow: uowMgr}
+func NewService(repo *infrastructure.Repo, productClient productclient.Client, shiftClient shiftclient.Client, salesClient salesclient.Client, settingsClient settingsclient.Client, uowMgr *uow.Manager) *Service {
+	return &Service{repo: repo, products: productClient, shifts: shiftClient, sales: salesClient, settings: settingsClient, uow: uowMgr}
 }
 
 type ItemDTO struct {
@@ -61,6 +63,9 @@ type DTO struct {
 	Subtotal       int64     `json:"subtotal"`
 	Discount       int64     `json:"discount"`
 	Tax            int64     `json:"tax"`
+	ServiceCharge  int64     `json:"serviceCharge"`
+	GatewayFee     int64     `json:"gatewayFee"`
+	ServiceLine    int64     `json:"serviceLine"`
 	Total          int64     `json:"total"`
 	AmountReceived int64     `json:"amountReceived"`
 	ChangeAmount   int64     `json:"changeAmount"`
@@ -143,13 +148,16 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 		})
 	}
 
-	// Kebijakan kontrol diskon (di server, bukan klien).
-	policy := s.controlPolicy(ctx, storeID)
+	// Settings toko (sekali ambil) → kebijakan kontrol diskon + biaya layanan/PPN.
+	cfg := s.loadSettings(ctx, storeID)
+	policy := controlPolicyFrom(cfg)
 	if policy.DiscountNeedsApproval(subtotal, in.Discount) && strings.TrimSpace(in.DiscountApprovedBy) == "" {
 		return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh persetujuan supervisor (discountApprovedBy).")
 	}
 
-	total := shareddomain.Total(subtotal, in.Discount, 0)
+	// Kasir tidak memakai payment gateway → gateway fee 0; service 2% + PPN tetap berlaku.
+	bd := shareddomain.ComputeBreakdown(subtotal, in.Discount, 0, cfg.ServicePercent, cfg.TaxPercent, cfg.TaxEnabled)
+	total := bd.Total
 
 	var amountReceived, change int64
 	if in.PaymentMethod == "cash" {
@@ -193,6 +201,9 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 			Items:              items,
 			Subtotal:           subtotal,
 			Discount:           in.Discount,
+			Tax:                bd.Tax,
+			ServiceCharge:      bd.Service,
+			GatewayFee:         0,
 			Total:              total,
 			AmountReceived:     amountReceived,
 			Change:             change,
@@ -250,16 +261,23 @@ func (s *Service) getDTO(ctx context.Context, storeID, txID string) (DTO, error)
 	return toDTO(t, items), nil
 }
 
-func (s *Service) controlPolicy(ctx context.Context, storeID string) shareddomain.ControlPolicy {
-	st, err := s.repo.Settings(ctx, storeID)
+// loadSettings membaca settings via kontrak settingsclient; default aman bila gagal baca.
+func (s *Service) loadSettings(ctx context.Context, storeID string) settingsclient.Settings {
+	cfg, err := s.settings.Get(ctx, storeID)
 	if err != nil {
-		// default aman bila settings belum ada
-		return shareddomain.ControlPolicy{MaxDiscountPercent: 10, MaxOperationalExpense: 200000, CashVarianceTolerance: 5000}
+		return settingsclient.Settings{
+			MaxDiscountPercent: 10, MaxOperationalExpense: 200000, CashVarianceTolerance: 5000,
+			ServicePercent: 2, TaxPercent: 11, TaxEnabled: false,
+		}
 	}
+	return cfg
+}
+
+func controlPolicyFrom(cfg settingsclient.Settings) shareddomain.ControlPolicy {
 	return shareddomain.ControlPolicy{
-		MaxDiscountPercent:    int64(st.MaxDiscountPercent),
-		MaxOperationalExpense: st.MaxOperationalExpense,
-		CashVarianceTolerance: st.CashVarianceTolerance,
+		MaxDiscountPercent:    int64(cfg.MaxDiscountPercent),
+		MaxOperationalExpense: cfg.MaxOperationalExpense,
+		CashVarianceTolerance: cfg.CashVarianceTolerance,
 	}
 }
 
@@ -268,7 +286,9 @@ func toDTO(t sqlcgen.Transaction, items []sqlcgen.TransactionItem) DTO {
 		ID: t.ID, Code: t.Code, ShiftID: t.ShiftID.String, TableID: t.TableID.String,
 		SelfOrderID: t.SelfOrderID.String, CashierID: t.CashierID.String,
 		OrderType: string(t.OrderType), Source: string(t.Source), PaymentMethod: string(t.PaymentMethod),
-		Status: string(t.Status), Subtotal: t.Subtotal, Discount: t.Discount, Tax: t.Tax, Total: t.Total,
+		Status: string(t.Status), Subtotal: t.Subtotal, Discount: t.Discount, Tax: t.Tax,
+		ServiceCharge: t.ServiceCharge, GatewayFee: t.GatewayFee, ServiceLine: t.ServiceCharge + t.GatewayFee,
+		Total:          t.Total,
 		AmountReceived: t.AmountReceived, ChangeAmount: t.ChangeAmount, CustomerNote: t.CustomerNote.String,
 		CreatedAt: t.CreatedAt, Items: []ItemDTO{},
 	}

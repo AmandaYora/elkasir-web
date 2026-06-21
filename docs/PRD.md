@@ -158,9 +158,9 @@ the boundaries are mirrored in the backend architecture (see
   distribution** (cash vs QRIS counts/totals), and **staff performance**.
 
 ### 5.8 Payments
-- Integrates a payment provider (Xendit, sandbox-capable) for **QRIS**.
-- Generates a QR string for the customer to scan, then confirms payment via
-  provider callback/webhook; **cash** is settled directly.
+- Integrates a payment provider (Tripay active, Midtrans selectable; sandbox-capable) for **QRIS**.
+- Generates a QR (image) for the customer to scan, then confirms payment via
+  provider HTTP notification/webhook (signature-verified); **cash** is settled directly.
 - If the QRIS provider is not configured, the QRIS path is disabled (cash only),
   and self-order payment may run in a simulated mode for testing.
 

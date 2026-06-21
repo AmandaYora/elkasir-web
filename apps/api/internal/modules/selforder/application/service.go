@@ -21,9 +21,11 @@ import (
 	productclient "github.com/elkasir/api/internal/modules/product/contracts"
 	"github.com/elkasir/api/internal/modules/selforder/domain"
 	"github.com/elkasir/api/internal/modules/selforder/infrastructure"
+	settingsclient "github.com/elkasir/api/internal/modules/settings/contracts"
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
 	tableclient "github.com/elkasir/api/internal/modules/table/contracts"
 	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
+	shareddomain "github.com/elkasir/api/internal/domain"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 	"github.com/elkasir/api/internal/platform/httpx"
 	"github.com/elkasir/api/internal/platform/id"
@@ -42,6 +44,7 @@ type Service struct {
 	shifts   shiftclient.Client
 	tables   tableclient.Client
 	payments paymentclient.Client
+	settings settingsclient.Client
 	uow      *uow.Manager
 }
 
@@ -52,9 +55,10 @@ func NewService(
 	shiftClient shiftclient.Client,
 	tableClient tableclient.Client,
 	paymentClient paymentclient.Client,
+	settingsClient settingsclient.Client,
 	uowMgr *uow.Manager,
 ) *Service {
-	return &Service{repo: repo, products: productClient, sales: salesClient, shifts: shiftClient, tables: tableClient, payments: paymentClient, uow: uowMgr}
+	return &Service{repo: repo, products: productClient, sales: salesClient, shifts: shiftClient, tables: tableClient, payments: paymentClient, settings: settingsClient, uow: uowMgr}
 }
 
 func (s *Service) PaymentEnabled() bool { return s.payments.Enabled() }
@@ -78,11 +82,25 @@ type OrderDTO struct {
 	PaymentStatus string    `json:"paymentStatus"`
 	ClaimCode     string    `json:"claimCode,omitempty"`
 	Subtotal      int64     `json:"subtotal"`
+	Service       int64     `json:"service"`     // biaya layanan 2% (rounded)
+	GatewayFee    int64     `json:"gatewayFee"`  // biaya gateway QRIS (0 utk cash)
+	ServiceLine   int64     `json:"serviceLine"` // "Layanan" = service + gatewayFee
+	Tax           int64     `json:"tax"`         // PPN
 	Total         int64     `json:"total"`
 	CustomerNote  string    `json:"customerNote,omitempty"`
 	TransactionID string    `json:"transactionId,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	Items         []ItemDTO `json:"items"`
+}
+
+// QuoteDTO adalah rincian biaya untuk ditampilkan SEBELUM pesanan dibuat (review step).
+type QuoteDTO struct {
+	Subtotal    int64 `json:"subtotal"`
+	Service     int64 `json:"service"`
+	GatewayFee  int64 `json:"gatewayFee"`
+	ServiceLine int64 `json:"serviceLine"`
+	Tax         int64 `json:"tax"`
+	Total       int64 `json:"total"`
 }
 
 type TableDTO struct {
@@ -107,10 +125,11 @@ type MenuDTO struct {
 }
 
 type PlaceResult struct {
-	Order     OrderDTO `json:"order"`
-	QRString  string   `json:"qrString,omitempty"`
-	ClaimCode string   `json:"claimCode,omitempty"`
-	Simulated bool     `json:"simulated,omitempty"`
+	Order      OrderDTO `json:"order"`
+	QRString   string   `json:"qrString,omitempty"`
+	QRImageURL string   `json:"qrImageUrl,omitempty"`
+	ClaimCode  string   `json:"claimCode,omitempty"`
+	Simulated  bool     `json:"simulated,omitempty"`
 }
 
 type StatusDTO struct {
@@ -184,30 +203,14 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 	if in.PaymentMethod != "qris" && in.PaymentMethod != "cash" {
 		return PlaceResult{}, httpx.Validation("Metode pembayaran harus 'qris' atau 'cash'.")
 	}
-	if len(in.Items) == 0 {
-		return PlaceResult{}, httpx.Validation("Pesanan tidak boleh kosong.")
+	// Snapshot harga dari produk + hitung rincian biaya (service 2% + PPN + gateway utk QRIS).
+	items, subtotal, err := s.resolveItems(ctx, t.StoreID, in.Items)
+	if err != nil {
+		return PlaceResult{}, err
 	}
-
-	// Snapshot harga dari produk (via productclient; total dihitung server).
-	var items []domain.OrderItem
-	var subtotal int64
-	for _, ci := range in.Items {
-		if ci.Quantity <= 0 {
-			return PlaceResult{}, httpx.Validation("Kuantitas item harus lebih dari 0.")
-		}
-		pr, err := s.products.GetForSale(ctx, t.StoreID, ci.ProductID)
-		if errors.Is(err, productclient.ErrNotFound) {
-			return PlaceResult{}, httpx.Validation("Produk tidak ditemukan: " + ci.ProductID)
-		}
-		if err != nil {
-			return PlaceResult{}, err
-		}
-		if !pr.Active {
-			return PlaceResult{}, httpx.Validation("Produk nonaktif: " + pr.Name)
-		}
-		lt := pr.Price * int64(ci.Quantity)
-		subtotal += lt
-		items = append(items, domain.OrderItem{ProductID: pr.ID, ProductName: pr.Name, Category: pr.Category, Price: pr.Price, Quantity: ci.Quantity, LineTotal: lt, Note: strings.TrimSpace(ci.Note)})
+	bd, err := s.priceQuote(ctx, t.StoreID, in.PaymentMethod, subtotal)
+	if err != nil {
+		return PlaceResult{}, err
 	}
 
 	soID := id.New()
@@ -218,29 +221,32 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 		order := sqlcgen.CreateSelfOrderParams{
 			ID: soID, StoreID: t.StoreID, TableID: tableID,
 			PaymentMethod: sqlcgen.SelfOrdersPaymentMethodQris, PaymentStatus: sqlcgen.SelfOrdersPaymentStatusPending,
-			ClaimCode: sql.NullString{}, Subtotal: subtotal, Total: subtotal, CustomerNote: note,
-			ExpiresAt: sql.NullTime{Time: time.Now().Add(orderTTL).UTC(), Valid: true},
+			ClaimCode: sql.NullString{},
+			Subtotal:  subtotal, ServiceCharge: bd.Service, GatewayFee: bd.GatewayFee, Tax: bd.Tax, Total: bd.Total,
+			CustomerNote: note,
+			ExpiresAt:    sql.NullTime{Time: time.Now().Add(orderTTL).UTC(), Valid: true},
 		}
 		if err := s.repo.CreateOrder(ctx, infrastructure.CreateOrderData{Order: order, Items: items}); err != nil {
 			return PlaceResult{}, err
 		}
 
-		// Buat tagihan QRIS via paymentclient (Xendit/simulasi) + catat payments.
-		charge, err := s.payments.CreateCharge(ctx, t.StoreID, soID, subtotal)
+		// Tagih TOTAL (sudah termasuk layanan + gateway + PPN) via paymentclient + catat payments.
+		charge, err := s.payments.CreateCharge(ctx, t.StoreID, soID, bd.Total)
 		if err != nil {
 			return PlaceResult{}, httpx.Internal("Gagal membuat QR pembayaran: " + err.Error())
 		}
 
 		dto, err := s.orderDTO(ctx, t.StoreID, soID)
-		return PlaceResult{Order: dto, QRString: charge.QRString, Simulated: charge.Simulated}, err
+		return PlaceResult{Order: dto, QRString: charge.QRString, QRImageURL: charge.QRImageURL, Simulated: charge.Simulated}, err
 	}
 
-	// Cash → bayar di kasir: claim code untuk barcode.
+	// Cash → bayar di kasir: claim code untuk barcode (gateway fee = 0).
 	claim := genClaimCode(t.Code)
 	order := sqlcgen.CreateSelfOrderParams{
 		ID: soID, StoreID: t.StoreID, TableID: tableID,
 		PaymentMethod: sqlcgen.SelfOrdersPaymentMethodCash, PaymentStatus: sqlcgen.SelfOrdersPaymentStatusUnpaid,
-		ClaimCode: sql.NullString{String: claim, Valid: true}, Subtotal: subtotal, Total: subtotal,
+		ClaimCode: sql.NullString{String: claim, Valid: true},
+		Subtotal:  subtotal, ServiceCharge: bd.Service, GatewayFee: bd.GatewayFee, Tax: bd.Tax, Total: bd.Total,
 		CustomerNote: note, ExpiresAt: sql.NullTime{},
 	}
 	if err := s.repo.CreateOrder(ctx, infrastructure.CreateOrderData{Order: order, Items: items}); err != nil {
@@ -248,6 +254,79 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 	}
 	dto, err := s.orderDTO(ctx, t.StoreID, soID)
 	return PlaceResult{Order: dto, ClaimCode: claim}, err
+}
+
+// ── Quote (rincian biaya sebelum order dibuat) ───────────────
+func (s *Service) Quote(ctx context.Context, tableCode string, in PlaceInput) (QuoteDTO, error) {
+	t, err := s.tables.FindByCode(ctx, tableCode)
+	if errors.Is(err, tableclient.ErrNotFound) {
+		return QuoteDTO{}, httpx.NotFound("Meja tidak dikenali.")
+	}
+	if err != nil {
+		return QuoteDTO{}, err
+	}
+	if in.PaymentMethod != "qris" && in.PaymentMethod != "cash" {
+		return QuoteDTO{}, httpx.Validation("Metode pembayaran harus 'qris' atau 'cash'.")
+	}
+	_, subtotal, err := s.resolveItems(ctx, t.StoreID, in.Items)
+	if err != nil {
+		return QuoteDTO{}, err
+	}
+	bd, err := s.priceQuote(ctx, t.StoreID, in.PaymentMethod, subtotal)
+	if err != nil {
+		return QuoteDTO{}, err
+	}
+	return QuoteDTO{
+		Subtotal: bd.Subtotal, Service: bd.Service, GatewayFee: bd.GatewayFee,
+		ServiceLine: bd.ServiceLine(), Tax: bd.Tax, Total: bd.Total,
+	}, nil
+}
+
+// resolveItems memvalidasi & men-snapshot harga item (via productclient) → daftar item + subtotal.
+func (s *Service) resolveItems(ctx context.Context, storeID string, in []PlaceItem) ([]domain.OrderItem, int64, error) {
+	if len(in) == 0 {
+		return nil, 0, httpx.Validation("Pesanan tidak boleh kosong.")
+	}
+	var items []domain.OrderItem
+	var subtotal int64
+	for _, ci := range in {
+		if ci.Quantity <= 0 {
+			return nil, 0, httpx.Validation("Kuantitas item harus lebih dari 0.")
+		}
+		pr, err := s.products.GetForSale(ctx, storeID, ci.ProductID)
+		if errors.Is(err, productclient.ErrNotFound) {
+			return nil, 0, httpx.Validation("Produk tidak ditemukan: " + ci.ProductID)
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		if !pr.Active {
+			return nil, 0, httpx.Validation("Produk nonaktif: " + pr.Name)
+		}
+		lt := pr.Price * int64(ci.Quantity)
+		subtotal += lt
+		items = append(items, domain.OrderItem{ProductID: pr.ID, ProductName: pr.Name, Category: pr.Category, Price: pr.Price, Quantity: ci.Quantity, LineTotal: lt, Note: strings.TrimSpace(ci.Note)})
+	}
+	return items, subtotal, nil
+}
+
+// priceQuote menghitung breakdown biaya dari subtotal sesuai settings toko. Biaya gateway
+// hanya untuk QRIS (di-quote live dari provider); cash → 0.
+func (s *Service) priceQuote(ctx context.Context, storeID, paymentMethod string, subtotal int64) (shareddomain.Breakdown, error) {
+	cfg, err := s.settings.Get(ctx, storeID)
+	if err != nil {
+		return shareddomain.Breakdown{}, err
+	}
+	var gatewayFee int64
+	if paymentMethod == "qris" {
+		base := shareddomain.PreGatewayBase(subtotal, 0, cfg.ServicePercent, cfg.TaxPercent, cfg.TaxEnabled)
+		fee, ferr := s.payments.QuoteFee(ctx, base)
+		if ferr != nil {
+			return shareddomain.Breakdown{}, httpx.Internal("Gagal menghitung biaya pembayaran: " + ferr.Error())
+		}
+		gatewayFee = fee
+	}
+	return shareddomain.ComputeBreakdown(subtotal, 0, gatewayFee, cfg.ServicePercent, cfg.TaxPercent, cfg.TaxEnabled), nil
 }
 
 // ── Status polling (publik) ──────────────────────────────────
@@ -280,10 +359,10 @@ func (s *Service) SimulatePaid(ctx context.Context, soID string) error {
 	return s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", "")
 }
 
-// ── Webhook Xendit ───────────────────────────────────────────
-// HandleWebhook: verifikasi token (paymentclient), idempoten (webhook_events), dan pada
-// status lunas → fulfilment (kurangi stok + transaksi). Selalu 200 agar Xendit tak retry,
-// kecuali token salah (401) atau kegagalan sementara (500).
+// ── Webhook pembayaran (provider-agnostic) ───────────────────
+// HandleWebhook: verifikasi signature (paymentclient → gateway aktif), idempoten
+// (webhook_events), dan pada status lunas → fulfilment (kurangi stok + transaksi). Selalu 200
+// agar provider tak retry, kecuali signature salah (401) atau kegagalan sementara (500).
 func (s *Service) HandleWebhook(ctx context.Context, header http.Header, body []byte) error {
 	if !s.payments.VerifyWebhook(header, body) {
 		return httpx.Unauthorized("Callback pembayaran tidak terverifikasi.")
@@ -311,7 +390,7 @@ func (s *Service) HandleWebhook(ctx context.Context, header http.Header, body []
 		if err == nil && o.PaymentStatus == sqlcgen.SelfOrdersPaymentStatusPending &&
 			o.PaymentMethod == sqlcgen.SelfOrdersPaymentMethodQris {
 			if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", ""); err != nil {
-				return err // gagal sementara → biarkan Xendit retry (belum ditandai seen)
+				return err // gagal sementara → biarkan provider retry (belum ditandai seen)
 			}
 		}
 	}
@@ -431,6 +510,9 @@ func (s *Service) fulfill(ctx context.Context, o sqlcgen.SelfOrder, paymentMetho
 			Items:          saleItems,
 			Subtotal:       o.Subtotal,
 			Discount:       0,
+			Tax:            o.Tax,
+			ServiceCharge:  o.ServiceCharge,
+			GatewayFee:     o.GatewayFee,
 			Total:          o.Total,
 			AmountReceived: o.Total,
 			Change:         0,
@@ -485,7 +567,9 @@ func buildOrderDTO(o sqlcgen.SelfOrder, items []sqlcgen.SelfOrderItem, tableCode
 	d := OrderDTO{
 		ID: o.ID, TableCode: tableCode, TableName: tableName, Status: string(o.Status),
 		PaymentMethod: string(o.PaymentMethod), PaymentStatus: string(o.PaymentStatus),
-		ClaimCode: o.ClaimCode.String, Subtotal: o.Subtotal, Total: o.Total,
+		ClaimCode: o.ClaimCode.String, Subtotal: o.Subtotal,
+		Service: o.ServiceCharge, GatewayFee: o.GatewayFee, ServiceLine: o.ServiceCharge + o.GatewayFee,
+		Tax: o.Tax, Total: o.Total,
 		CustomerNote: o.CustomerNote.String, TransactionID: o.TransactionID.String,
 		CreatedAt: o.CreatedAt, Items: []ItemDTO{},
 	}

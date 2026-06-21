@@ -12,13 +12,14 @@ public contract a module provides, and the contracts it consumes.
 | `product` | Product catalog CRUD, stock adjust/decrement | `products` | `productclient` — `GetForSale`, `ListActive`, `Decrease` (tx-aware) | auth (mw) |
 | `category` | Product categories CRUD | `product_categories` | — | auth (mw) |
 | `table` | Dining tables CRUD + QR table codes | `tables` | `tableclient` — table lookup by code | auth (mw) |
-| `transaction` | Cashier sales: create transaction atomically, list/detail | `transactions`, `transaction_items` | `salesclient` — record sales / read sales aggregates | `productclient`, `shiftclient` (orchestration via UoW); auth (mw) |
+| `transaction` | Cashier sales: create transaction atomically (service+PPN via settings), list/detail | `transactions`, `transaction_items` | `salesclient` — record sales / read sales aggregates | `productclient`, `shiftclient`, `settingsclient` (orchestration via UoW); auth (mw) |
 | `shift` | Cashier shifts: open/close, cash totals, expected vs actual, variance | `shifts` | `shiftclient` — current open shift, accrue sales/cash | auth (mw) |
 | `cashmovement` | Cash movements (capital/expense/adjustment) tied to a shift | `cash_movements` | — | `shiftclient`; auth (mw) |
 | `withdrawal` | Cash withdrawal requests (bank/account/holder) | `withdrawals` | — | auth (mw) |
 | `report` | Dashboard + analytics: sales by day, top products, sales by category, payment distribution, staff performance | (reads aggregates over its own report queries) | — | auth (mw) |
-| `payment` | Xendit QRIS integration: create/verify payment | (payment refs) | `paymentclient` — create payment, status | auth (mw) |
-| `selforder` | Customer self-order: public menu, place order, status, claim-code redeem + checkout (orchestrator) | `self_orders`, `self_order_items` | — | `productclient`, `salesclient`, `shiftclient`, `tableclient`, `paymentclient` (UoW); auth (mw, admin side) |
+| `payment` | QRIS gateway (Tripay/Midtrans, selectable): create/quote-fee/verify payment | (payment refs) | `paymentclient` — create charge, **quote fee**, status | auth (mw) |
+| `settings` | Store config: control thresholds, feature flags, **pajak (PPN) & biaya layanan** (Pengaturan menu) | `settings` | `settingsclient` — read store settings | auth (mw) |
+| `selforder` | Customer self-order: public menu, place order, **quote breakdown**, status, claim-code redeem + checkout (orchestrator) | `self_orders`, `self_order_items` | — | `productclient`, `salesclient`, `shiftclient`, `tableclient`, `paymentclient`, `settingsclient` (UoW); auth (mw, admin side) |
 
 > Table ownership is authoritative in [DATABASE_GUIDE.md](DATABASE_GUIDE.md) (derived from migrations). The
 > list above is the module-level summary; if they diverge, the migrations + DATABASE_GUIDE win.

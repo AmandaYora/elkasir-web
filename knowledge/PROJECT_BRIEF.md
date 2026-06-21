@@ -70,7 +70,7 @@ footprint tiny: one app container plus a host database, fronted by a reverse pro
 | Cashier POS | Flutter app `elkasir_pos` (separate repo) |
 | Backend | Go modular monolith (go-chi, MySQL via sqlc + golang-migrate, ULID ids) |
 | Auth | JWT, two actor types: admin web users and POS staff |
-| Payments | Xendit (QRIS) |
+| Payments | QRIS gateway — Tripay (active) or Midtrans, selectable via env |
 | Tenancy | Per-`store_id` scoping |
 | Deploy | One container (SPA embedded in Go binary); MySQL on host |
 | API base path | `/api/v1` |

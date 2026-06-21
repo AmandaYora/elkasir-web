@@ -11,6 +11,7 @@ import (
 	"github.com/elkasir/api/internal/modules/selforder/application"
 	"github.com/elkasir/api/internal/modules/selforder/infrastructure"
 	"github.com/elkasir/api/internal/modules/selforder/presentation"
+	settingsclient "github.com/elkasir/api/internal/modules/settings/contracts"
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
 	tableclient "github.com/elkasir/api/internal/modules/table/contracts"
 	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
@@ -33,9 +34,10 @@ func New(
 	shiftClient shiftclient.Client,
 	tableClient tableclient.Client,
 	paymentClient paymentclient.Client,
+	settingsClient settingsclient.Client,
 ) *Module {
 	repo := infrastructure.NewRepo(uowMgr)
-	svc := application.NewService(repo, productClient, salesClient, shiftClient, tableClient, paymentClient, uowMgr)
+	svc := application.NewService(repo, productClient, salesClient, shiftClient, tableClient, paymentClient, settingsClient, uowMgr)
 	return &Module{
 		Handler: presentation.NewHandler(svc, auth),
 	}

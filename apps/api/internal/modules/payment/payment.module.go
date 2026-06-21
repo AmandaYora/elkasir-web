@@ -1,5 +1,5 @@
-// Package payment wires the payment module (QRIS gateway over the Xendit adapter) and
-// exposes ONLY its contract client. This module has NO HTTP handler and NO routes.
+// Package payment wires the payment module (QRIS gateway — Tripay/Midtrans, selected by
+// config) and exposes ONLY its contract client. This module has NO HTTP handler and NO routes.
 package payment
 
 import (
@@ -14,8 +14,8 @@ type Module struct {
 	Client paymentclient.Client
 }
 
-// New assembles the payment module: the tx-aware contract client over the Xendit adapter.
-func New(cfg config.Xendit, uowMgr *uow.Manager) *Module {
+// New assembles the payment module: the tx-aware contract client over the active gateway.
+func New(cfg config.Payment, uowMgr *uow.Manager) *Module {
 	return &Module{
 		Client: infrastructure.NewClient(cfg, uowMgr),
 	}

@@ -40,9 +40,9 @@ func (q *Queries) CreateIdempotencyKey(ctx context.Context, arg CreateIdempotenc
 const createTransaction = `-- name: CreateTransaction :exec
 INSERT INTO transactions (
   id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source,
-  payment_method, status, subtotal, discount, tax, total, amount_received, change_amount,
-  discount_approved_by, customer_note, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  payment_method, status, subtotal, discount, tax, service_charge, gateway_fee, total,
+  amount_received, change_amount, discount_approved_by, customer_note, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateTransactionParams struct {
@@ -60,6 +60,8 @@ type CreateTransactionParams struct {
 	Subtotal           int64                     `json:"subtotal"`
 	Discount           int64                     `json:"discount"`
 	Tax                int64                     `json:"tax"`
+	ServiceCharge      int64                     `json:"serviceCharge"`
+	GatewayFee         int64                     `json:"gatewayFee"`
 	Total              int64                     `json:"total"`
 	AmountReceived     int64                     `json:"amountReceived"`
 	ChangeAmount       int64                     `json:"changeAmount"`
@@ -84,6 +86,8 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.Subtotal,
 		arg.Discount,
 		arg.Tax,
+		arg.ServiceCharge,
+		arg.GatewayFee,
 		arg.Total,
 		arg.AmountReceived,
 		arg.ChangeAmount,
@@ -211,7 +215,7 @@ func (q *Queries) GetProductForSale(ctx context.Context, arg GetProductForSalePa
 }
 
 const getTransaction = `-- name: GetTransaction :one
-SELECT id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source, payment_method, status, subtotal, discount, tax, total, amount_received, change_amount, discount_approved_by, customer_note, created_at FROM transactions WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source, payment_method, status, subtotal, discount, tax, total, amount_received, change_amount, discount_approved_by, customer_note, created_at, service_charge, gateway_fee FROM transactions WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetTransactionParams struct {
@@ -243,6 +247,8 @@ func (q *Queries) GetTransaction(ctx context.Context, arg GetTransactionParams) 
 		&i.DiscountApprovedBy,
 		&i.CustomerNote,
 		&i.CreatedAt,
+		&i.ServiceCharge,
+		&i.GatewayFee,
 	)
 	return i, err
 }

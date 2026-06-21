@@ -149,27 +149,6 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 	return i, err
 }
 
-const getSettingsByStore = `-- name: GetSettingsByStore :one
-SELECT id, store_id, max_discount_percent, max_operational_expense, cash_variance_tolerance, feature_self_order, feature_qris, created_at, updated_at FROM settings WHERE store_id = ? LIMIT 1
-`
-
-func (q *Queries) GetSettingsByStore(ctx context.Context, storeID string) (Setting, error) {
-	row := q.db.QueryRowContext(ctx, getSettingsByStore, storeID)
-	var i Setting
-	err := row.Scan(
-		&i.ID,
-		&i.StoreID,
-		&i.MaxDiscountPercent,
-		&i.MaxOperationalExpense,
-		&i.CashVarianceTolerance,
-		&i.FeatureSelfOrder,
-		&i.FeatureQris,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getStaffByID = `-- name: GetStaffByID :one
 SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at FROM staff WHERE id = ? LIMIT 1
 `

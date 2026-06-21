@@ -84,7 +84,7 @@ export default function IncomingOrdersPage() {
         <div>
           <h2 className="text-lg font-semibold text-text">Pesanan Masuk</h2>
           <p className="text-sm text-muted">
-            {list.length} pesanan self-order · {unpaidCount} menunggu tebusan barcode
+            {list.length} pesanan mandiri · {unpaidCount} menunggu tebusan barcode
           </p>
         </div>
         <Button size="sm" className="gap-1.5" onClick={() => setRedeemOpen(true)}>

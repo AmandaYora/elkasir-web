@@ -57,6 +57,8 @@ type Querier interface {
 	GetSelfOrder(ctx context.Context, arg GetSelfOrderParams) (SelfOrder, error)
 	GetSelfOrderByClaimCode(ctx context.Context, arg GetSelfOrderByClaimCodeParams) (SelfOrder, error)
 	GetSelfOrderByID(ctx context.Context, id string) (SelfOrder, error)
+	// Tabel settings dimiliki modul `settings`. Pembaca lintas-modul memakai kontrak
+	// settingsclient; query di sini adalah satu-satunya akses tulis.
 	GetSettingsByStore(ctx context.Context, storeID string) (Setting, error)
 	GetShift(ctx context.Context, arg GetShiftParams) (Shift, error)
 	GetStaffByID(ctx context.Context, id string) (Staff, error)
@@ -82,6 +84,8 @@ type Querier interface {
 	ReportRecentTransactions(ctx context.Context, arg ReportRecentTransactionsParams) ([]ReportRecentTransactionsRow, error)
 	ReportSalesByCategory(ctx context.Context, arg ReportSalesByCategoryParams) ([]ReportSalesByCategoryRow, error)
 	ReportSalesByDay(ctx context.Context, arg ReportSalesByDayParams) ([]ReportSalesByDayRow, error)
+	// revenue = total. Tiga bucket keuangan terpisah: penjualan (subtotal−diskon),
+	// layanan (service + biaya gateway), pajak (PPN). Ketiganya berjumlah = revenue.
 	ReportSalesSummary(ctx context.Context, arg ReportSalesSummaryParams) (ReportSalesSummaryRow, error)
 	ReportStaffPerformance(ctx context.Context, arg ReportStaffPerformanceParams) ([]ReportStaffPerformanceRow, error)
 	ReportTopProducts(ctx context.Context, arg ReportTopProductsParams) ([]ReportTopProductsRow, error)
@@ -98,6 +102,7 @@ type Querier interface {
 	UpdateStaff(ctx context.Context, arg UpdateStaffParams) error
 	UpdateStaffPassword(ctx context.Context, arg UpdateStaffPasswordParams) error
 	UpdateTable(ctx context.Context, arg UpdateTableParams) error
+	UpsertSettings(ctx context.Context, arg UpsertSettingsParams) error
 }
 
 var _ Querier = (*Queries)(nil)

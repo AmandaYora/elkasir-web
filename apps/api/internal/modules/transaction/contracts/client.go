@@ -34,6 +34,9 @@ type RecordSaleInput struct {
 	Items              []SaleItem
 	Subtotal           int64
 	Discount           int64
+	Tax                int64 // PPN
+	ServiceCharge      int64 // biaya layanan 2% (rounded)
+	GatewayFee         int64 // biaya gateway QRIS (0 utk cash/kasir)
 	Total              int64
 	AmountReceived     int64
 	Change             int64

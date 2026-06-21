@@ -29,11 +29,25 @@ export interface SelfOrder {
   paymentStatus: SelfOrderPaymentStatus;
   claimCode?: string;
   subtotal: number;
+  service: number; // biaya layanan 2% (rounded)
+  gatewayFee: number; // biaya gateway QRIS (0 utk cash)
+  serviceLine: number; // "Layanan" = service + gatewayFee
+  tax: number; // PPN
   total: number;
   customerNote?: string;
   transactionId?: string;
   createdAt: string;
   items: SelfOrderItem[];
+}
+
+// Rincian biaya dari endpoint quote (ditampilkan sebelum pesanan dibuat).
+export interface QuoteResult {
+  subtotal: number;
+  service: number;
+  gatewayFee: number;
+  serviceLine: number;
+  tax: number;
+  total: number;
 }
 
 export interface CheckoutResult {
@@ -71,6 +85,7 @@ export interface PlaceOrderInput {
 export interface PlaceResult {
   order: SelfOrder;
   qrString?: string;
+  qrImageUrl?: string;
   claimCode?: string;
   simulated?: boolean;
 }

@@ -21,16 +21,52 @@ import { formatIDR } from "@/shared/lib/formatter";
 // QrisPaymentPanel → pembayaran QRIS (QR dari gateway, status dari polling).
 // CashierBarcodePanel → bayar di kasir (kode klaim ditampilkan sebagai barcode Code128
 // untuk dipindai scanner kasir; kode juga ditampilkan untuk diketik manual).
+// OrderBreakdown → rincian biaya: Subtotal, Layanan (service + biaya gateway), PPN, Total.
+
+export function OrderBreakdown({
+  subtotal,
+  serviceLine,
+  tax,
+  total,
+}: {
+  subtotal: number;
+  serviceLine: number;
+  tax: number;
+  total: number;
+}) {
+  const Row = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (
+    <div
+      className={`flex items-center justify-between px-4 py-2.5 text-sm ${strong ? "font-semibold" : ""}`}
+    >
+      <span className={strong ? "text-text" : "text-muted"}>{label}</span>
+      <span>{formatIDR(value)}</span>
+    </div>
+  );
+  return (
+    <div className="w-full rounded-xl border border-border bg-surface">
+      <Row label="Subtotal" value={subtotal} />
+      {serviceLine > 0 && <Row label="Layanan" value={serviceLine} />}
+      {tax > 0 && <Row label="PPN" value={tax} />}
+      <div className="border-t border-border">
+        <Row label="Total" value={total} strong />
+      </div>
+    </div>
+  );
+}
 
 export function QrisPaymentPanel({
   total,
   qrValue,
+  qrImageUrl,
   status,
   simulated,
   onSimulatePaid,
 }: {
   total: number;
   qrValue: string;
+  // Midtrans QRIS hanya memberi URL gambar QR (bukan string mentah). Bila ada, tampilkan
+  // gambar resmi gateway; jika tidak, render QR dari qrValue (fallback string/simulasi).
+  qrImageUrl?: string;
   status: "waiting" | "paid";
   simulated?: boolean;
   onSimulatePaid?: () => void;
@@ -53,7 +89,11 @@ export function QrisPaymentPanel({
     <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-5">
       <Badge tone="primary">Pembayaran QRIS</Badge>
       <div className="rounded-lg bg-white p-3">
-        <QRCodeSVG value={qrValue} size={190} marginSize={4} />
+        {qrImageUrl ? (
+          <img src={qrImageUrl} alt="Kode QRIS pembayaran" width={190} height={190} />
+        ) : (
+          <QRCodeSVG value={qrValue} size={190} marginSize={4} />
+        )}
       </div>
       <div className="flex items-center gap-2 text-sm font-medium text-warning">
         <Loader2 className="h-4 w-4 animate-spin" />

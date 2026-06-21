@@ -1,7 +1,12 @@
 -- name: ReportSalesSummary :one
+-- revenue = total. Tiga bucket keuangan terpisah: penjualan (subtotal−diskon),
+-- layanan (service + biaya gateway), pajak (PPN). Ketiganya berjumlah = revenue.
 SELECT
   COUNT(*) AS tx_count,
   CAST(COALESCE(SUM(total), 0) AS SIGNED) AS revenue,
+  CAST(COALESCE(SUM(subtotal - discount), 0) AS SIGNED) AS sales_total,
+  CAST(COALESCE(SUM(service_charge + gateway_fee), 0) AS SIGNED) AS service_total,
+  CAST(COALESCE(SUM(tax), 0) AS SIGNED) AS tax_total,
   CAST(COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total END), 0) AS SIGNED) AS cash_total,
   CAST(COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total END), 0) AS SIGNED) AS qris_total
 FROM transactions

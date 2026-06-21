@@ -31,7 +31,7 @@ const ORDER_TYPE_LABEL: Record<string, string> = {
 };
 const SOURCE_LABEL: Record<string, string> = {
   cashier: "Kasir",
-  self_order: "Self-order",
+  self_order: "Pesan mandiri",
 };
 
 export default function TransactionsPage() {
@@ -120,7 +120,7 @@ export default function TransactionsPage() {
             >
               <option value="all">Semua sumber</option>
               <option value="cashier">Kasir</option>
-              <option value="self_order">Self-order</option>
+              <option value="self_order">Pesan mandiri</option>
             </Select>
           </div>
         </CardContent>

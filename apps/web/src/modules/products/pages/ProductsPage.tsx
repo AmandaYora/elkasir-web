@@ -574,7 +574,7 @@ function ImageUploadField({
         </div>
       </div>
       <p className="text-xs text-muted">
-        JPG/PNG/WebP. Dikompres otomatis (browser + server) sebelum disimpan.
+        Format JPG, PNG, atau WebP. Gambar otomatis diperkecil agar tetap ringan.
       </p>
     </div>
   );

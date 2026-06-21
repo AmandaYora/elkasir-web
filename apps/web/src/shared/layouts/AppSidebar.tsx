@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   ShieldCheck,
   Inbox,
+  SlidersHorizontal,
 } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { appBrand } from "@/shared/constants/brand";
@@ -47,6 +48,10 @@ const groups: { label: string; items: NavItem[] }[] = [
       { title: "Staf", to: ROUTE_PATHS.staff, icon: Users },
       { title: "Pengguna", to: ROUTE_PATHS.users, icon: ShieldCheck },
     ],
+  },
+  {
+    label: "Sistem",
+    items: [{ title: "Pengaturan", to: ROUTE_PATHS.settings, icon: SlidersHorizontal }],
   },
 ];
 

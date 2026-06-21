@@ -5,7 +5,7 @@ const roleLabel: Record<AdminRole, string> = {
   owner: "Pemilik",
   admin: "Admin",
   manager: "Manajer",
-  viewer: "Viewer",
+  viewer: "Peninjau",
 };
 
 const roleTone: Record<AdminRole, "primary" | "neutral" | "warning"> = {

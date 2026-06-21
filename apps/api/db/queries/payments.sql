@@ -1,6 +1,6 @@
 -- name: CreatePayment :exec
 INSERT INTO payments (id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload)
-VALUES (?, ?, ?, 'xendit', ?, 'qris', ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, 'qris', ?, ?, ?);
 
 -- name: GetPaymentByProviderRef :one
 SELECT * FROM payments WHERE provider_ref = ? LIMIT 1;

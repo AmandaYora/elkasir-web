@@ -5,6 +5,7 @@ import type {
   PlaceResult,
   PublicMenu,
   PublicSelfOrderStatus,
+  QuoteResult,
 } from "@/modules/self-order/types/self-order.types";
 
 // Public (no-auth) order service for the customer self-order page.
@@ -16,6 +17,10 @@ export const publicOrderService = {
     }),
   place: (tableCode: string, body: PlaceOrderInput) =>
     api.post<PlaceResult>(`${endpoints.publicOrder}/${encodeURIComponent(tableCode)}`, body, {
+      auth: false,
+    }),
+  quote: (tableCode: string, body: PlaceOrderInput) =>
+    api.post<QuoteResult>(`${endpoints.publicOrder}/${encodeURIComponent(tableCode)}/quote`, body, {
       auth: false,
     }),
   status: (selfOrderId: string) =>

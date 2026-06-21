@@ -50,7 +50,12 @@ PK: `id`. Unique: `store_id`. One row per store (control policy + feature flags)
 | `cash_variance_tolerance` | BIGINT | default 5000. |
 | `feature_self_order` | TINYINT(1) | default 1. |
 | `feature_qris` | TINYINT(1) | default 1. |
+| `tax_enabled` | TINYINT(1) | default 0 — aktifkan PPN (migration 000009). |
+| `tax_percent` | INT | default 11 — PPN %. |
+| `service_percent` | INT | default 2 — biaya layanan %. |
 | `created_at` / `updated_at` | DATETIME | timestamps. |
+
+Owned by the `settings` module (`settingsclient` for cross-module reads; admin CRUD `GET/PATCH /settings`).
 
 ---
 
@@ -129,7 +134,7 @@ PK: `id`. Unique: `(provider, event_id)` (dedupe).
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | CHAR(26) | PK. |
-| `provider` | VARCHAR(40) | e.g. `xendit`. |
+| `provider` | VARCHAR(40) | e.g. `tripay`. |
 | `event_id` | VARCHAR(255) | provider event id. |
 | `processed_at` | DATETIME | default now. |
 | `created_at` | DATETIME | timestamp. |
@@ -235,8 +240,10 @@ PK: `id`. Unique: `(store_id, code)`. Indexes: `(store_id, created_at)`, `shift_
 | `status` | ENUM(`completed`,`voided`,`refunded`) | default `completed`. |
 | `subtotal` | BIGINT | default 0. |
 | `discount` | BIGINT | default 0. |
-| `tax` | BIGINT | default 0. |
-| `total` | BIGINT | default 0. |
+| `tax` | BIGINT | default 0 — PPN. |
+| `service_charge` | BIGINT | default 0 — biaya layanan 2% (migration 000010). |
+| `gateway_fee` | BIGINT | default 0 — biaya gateway QRIS (0 utk kasir). |
+| `total` | BIGINT | default 0 — = subtotal−discount+tax+service_charge+gateway_fee. |
 | `amount_received` | BIGINT | default 0. |
 | `change_amount` | BIGINT | default 0. |
 | `discount_approved_by` | CHAR(26) | nullable. **primitive ID** → staff(id) (FK dropped). |
@@ -315,7 +322,10 @@ PK: `id`. Unique: `claim_code`. Indexes: `(store_id, status)`, `payment_status`.
 | `payment_status` | ENUM(`pending`,`paid`,`expired`,`failed`,`unpaid`) | NOT NULL. |
 | `claim_code` | VARCHAR(40) | nullable, unique (cash pickup code). |
 | `subtotal` | BIGINT | default 0. |
-| `total` | BIGINT | default 0. |
+| `service_charge` | BIGINT | default 0 — biaya layanan 2% (migration 000010). |
+| `gateway_fee` | BIGINT | default 0 — biaya gateway QRIS (0 utk cash). |
+| `tax` | BIGINT | default 0 — PPN. |
+| `total` | BIGINT | default 0 — = subtotal+service_charge+gateway_fee+tax (yang ditagih). |
 | `customer_note` | VARCHAR(255) | nullable. |
 | `transaction_id` | CHAR(26) | nullable. **primitive ID** → transactions(id) (circular link, FK dropped). |
 | `expires_at` | DATETIME | nullable (QRIS TTL). |
@@ -344,14 +354,14 @@ PK: `id`. Index: `self_order_id`.
 
 ## `payments` — payment
 
-PK: `id`. Indexes: `self_order_id`, `provider_ref`. Gateway (Xendit) payment history/reconciliation.
+PK: `id`. Indexes: `self_order_id`, `provider_ref`. Gateway (Tripay/Midtrans) payment history/reconciliation.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | CHAR(26) | PK. |
 | `store_id` | CHAR(26) | **physical FK → stores(id)** (CASCADE). |
 | `self_order_id` | CHAR(26) | NOT NULL. **primitive ID** → self_orders(id) (FK dropped in 000005). |
-| `provider` | ENUM(`xendit`) | default `xendit`. |
+| `provider` | ENUM(`xendit`,`midtrans`,`tripay`) | default `tripay` (migration 000008; older values kept for back-compat). |
 | `provider_ref` | VARCHAR(190) | nullable (external ref). |
 | `method` | ENUM(`qris`) | default `qris`. |
 | `amount` | BIGINT | default 0. |

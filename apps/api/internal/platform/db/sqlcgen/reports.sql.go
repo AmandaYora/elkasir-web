@@ -194,6 +194,9 @@ const reportSalesSummary = `-- name: ReportSalesSummary :one
 SELECT
   COUNT(*) AS tx_count,
   CAST(COALESCE(SUM(total), 0) AS SIGNED) AS revenue,
+  CAST(COALESCE(SUM(subtotal - discount), 0) AS SIGNED) AS sales_total,
+  CAST(COALESCE(SUM(service_charge + gateway_fee), 0) AS SIGNED) AS service_total,
+  CAST(COALESCE(SUM(tax), 0) AS SIGNED) AS tax_total,
   CAST(COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total END), 0) AS SIGNED) AS cash_total,
   CAST(COALESCE(SUM(CASE WHEN payment_method = 'qris' THEN total END), 0) AS SIGNED) AS qris_total
 FROM transactions
@@ -207,18 +210,26 @@ type ReportSalesSummaryParams struct {
 }
 
 type ReportSalesSummaryRow struct {
-	TxCount   int64 `json:"txCount"`
-	Revenue   int64 `json:"revenue"`
-	CashTotal int64 `json:"cashTotal"`
-	QrisTotal int64 `json:"qrisTotal"`
+	TxCount      int64 `json:"txCount"`
+	Revenue      int64 `json:"revenue"`
+	SalesTotal   int64 `json:"salesTotal"`
+	ServiceTotal int64 `json:"serviceTotal"`
+	TaxTotal     int64 `json:"taxTotal"`
+	CashTotal    int64 `json:"cashTotal"`
+	QrisTotal    int64 `json:"qrisTotal"`
 }
 
+// revenue = total. Tiga bucket keuangan terpisah: penjualan (subtotal−diskon),
+// layanan (service + biaya gateway), pajak (PPN). Ketiganya berjumlah = revenue.
 func (q *Queries) ReportSalesSummary(ctx context.Context, arg ReportSalesSummaryParams) (ReportSalesSummaryRow, error) {
 	row := q.db.QueryRowContext(ctx, reportSalesSummary, arg.StoreID, arg.CreatedAt, arg.CreatedAt_2)
 	var i ReportSalesSummaryRow
 	err := row.Scan(
 		&i.TxCount,
 		&i.Revenue,
+		&i.SalesTotal,
+		&i.ServiceTotal,
+		&i.TaxTotal,
 		&i.CashTotal,
 		&i.QrisTotal,
 	)

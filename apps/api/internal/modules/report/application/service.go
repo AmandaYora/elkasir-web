@@ -13,12 +13,16 @@ type Service struct{ repo *infrastructure.Repo }
 
 func NewService(repo *infrastructure.Repo) *Service { return &Service{repo: repo} }
 
-// SummaryDTO ringkasan penjualan untuk dashboard.
+// SummaryDTO ringkasan penjualan untuk dashboard. Revenue dipisah jadi 3 bucket keuangan:
+// SalesTotal (penjualan = subtotal−diskon), ServiceTotal (layanan + biaya gateway), TaxTotal (PPN).
 type SummaryDTO struct {
-	TxCount   int64 `json:"txCount"`
-	Revenue   int64 `json:"revenue"`
-	CashTotal int64 `json:"cashTotal"`
-	QrisTotal int64 `json:"qrisTotal"`
+	TxCount      int64 `json:"txCount"`
+	Revenue      int64 `json:"revenue"`
+	SalesTotal   int64 `json:"salesTotal"`
+	ServiceTotal int64 `json:"serviceTotal"`
+	TaxTotal     int64 `json:"taxTotal"`
+	CashTotal    int64 `json:"cashTotal"`
+	QrisTotal    int64 `json:"qrisTotal"`
 }
 
 // RecentTxDTO satu transaksi terbaru untuk dashboard.
@@ -89,10 +93,13 @@ func (s *Service) Dashboard(ctx context.Context, storeID string, from, to time.T
 	}
 	out := DashboardDTO{
 		Summary: SummaryDTO{
-			TxCount:   sum.TxCount,
-			Revenue:   sum.Revenue,
-			CashTotal: sum.CashTotal,
-			QrisTotal: sum.QrisTotal,
+			TxCount:      sum.TxCount,
+			Revenue:      sum.Revenue,
+			SalesTotal:   sum.SalesTotal,
+			ServiceTotal: sum.ServiceTotal,
+			TaxTotal:     sum.TaxTotal,
+			CashTotal:    sum.CashTotal,
+			QrisTotal:    sum.QrisTotal,
 		},
 		Recent: make([]RecentTxDTO, 0, len(recent)),
 	}

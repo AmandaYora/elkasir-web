@@ -135,7 +135,7 @@ export default function UsersPage() {
               <option value="owner">Pemilik</option>
               <option value="admin">Admin</option>
               <option value="manager">Manajer</option>
-              <option value="viewer">Viewer</option>
+              <option value="viewer">Peninjau</option>
             </Select>
           </div>
         </CardContent>
@@ -375,7 +375,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
           <option value="owner">Pemilik</option>
           <option value="admin">Admin</option>
           <option value="manager">Manajer</option>
-          <option value="viewer">Viewer</option>
+          <option value="viewer">Peninjau</option>
         </Select>
       </div>
       <div className="grid gap-2">

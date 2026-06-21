@@ -15,6 +15,7 @@ import (
 	"github.com/elkasir/api/internal/modules/product"
 	"github.com/elkasir/api/internal/modules/report"
 	"github.com/elkasir/api/internal/modules/selforder"
+	"github.com/elkasir/api/internal/modules/settings"
 	"github.com/elkasir/api/internal/modules/shift"
 	"github.com/elkasir/api/internal/modules/staff"
 	"github.com/elkasir/api/internal/modules/table"
@@ -67,11 +68,12 @@ func (a *App) routes() {
 	mw := authMod.Middleware
 
 	// Provider modules (expose contracts consumed by orchestrators), tx-aware via UoW.
+	settingsMod := settings.New(a.Pool, a.Queries, a.UoW, mw)
 	productMod := product.New(a.Pool, a.Queries, a.UoW, mw)
 	shiftMod := shift.New(a.Pool, a.Queries, a.UoW, mw)
 	tableMod := table.New(a.Pool, a.Queries, a.UoW, mw)
-	paymentMod := payment.New(a.Cfg.Xendit, a.UoW)
-	txMod := transaction.New(a.Pool, a.Queries, a.UoW, mw, productMod.Client, shiftMod.Client)
+	paymentMod := payment.New(a.Cfg.Payment, a.UoW)
+	txMod := transaction.New(a.Pool, a.Queries, a.UoW, mw, productMod.Client, shiftMod.Client, settingsMod.Client)
 
 	// Leaf / consumer modules.
 	categoryMod := category.New(a.Pool, a.Queries, mw)
@@ -80,7 +82,7 @@ func (a *App) routes() {
 	withdrawalMod := withdrawal.New(a.Pool, a.Queries, mw)
 	reportMod := report.New(a.Pool, a.Queries, mw)
 	cashMod := cashmovement.New(a.Pool, a.Queries, mw, shiftMod.Client)
-	selfMod := selforder.New(a.UoW, mw, productMod.Client, txMod.SalesClient, shiftMod.Client, tableMod.Client, paymentMod.Client)
+	selfMod := selforder.New(a.UoW, mw, productMod.Client, txMod.SalesClient, shiftMod.Client, tableMod.Client, paymentMod.Client, settingsMod.Client)
 
 	// Object storage (S3-compatible) — opsional. Bila kredensial belum diisi, klien
 	// dibiarkan nil dan endpoint upload mengembalikan error yang jelas.
@@ -105,6 +107,7 @@ func (a *App) routes() {
 
 		reportMod.Handler.Routes(r)
 		selfMod.Handler.Routes(r)
+		settingsMod.Handler.Routes(r)
 	})
 
 	// Static SPA (embedded in the binary). Catch-all at root, registered LAST — serves

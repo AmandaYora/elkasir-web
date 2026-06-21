@@ -18,4 +18,5 @@ export const ROUTE_PATHS = {
   statistics: "/statistics",
   staff: "/cashiers",
   users: "/users",
+  settings: "/settings",
 } as const;

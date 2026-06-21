@@ -107,7 +107,7 @@ export default function TablesPage() {
     const dataUrl = canvas ? canvas.toDataURL("image/png") : "";
     const win = window.open("", "_blank", "width=420,height=560");
     if (!win) {
-      toast.error("Popup diblokir browser");
+      toast.error("Jendela cetak diblokir. Izinkan pop-up lalu coba lagi.");
       return;
     }
     win.document.write(`<!doctype html><html><head><title>QR Meja ${t.name}</title>

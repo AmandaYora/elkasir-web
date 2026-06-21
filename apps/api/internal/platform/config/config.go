@@ -17,7 +17,7 @@ type Config struct {
 	PublicBaseURL      string
 	DB                 DB
 	JWT                JWT
-	Xendit             Xendit
+	Payment            Payment
 	Storage            ObjectStorage
 }
 
@@ -31,14 +31,47 @@ type JWT struct {
 	RefreshTTL time.Duration
 }
 
-type Xendit struct {
-	SecretKey    string
-	WebhookToken string
+// Payment adalah konfigurasi pembayaran QRIS yang PROVIDER-AGNOSTIC di permukaan: satu
+// provider aktif dipilih lewat Provider (tripay|midtrans). Bila kosong / kredensial provider
+// aktif belum lengkap → jalur QRIS jatuh ke mode simulasi (dev). Sandbox vs production
+// dipilih lewat Env yang menurunkan BaseURL tiap provider (bisa di-override eksplisit).
+type Payment struct {
+	Provider    string // "tripay" | "midtrans" | "" (simulasi)
+	Sandbox     bool   // true = sandbox, false = production
+	CallbackURL string // URL webhook yang didaftarkan ke provider (diturunkan dari PublicBaseURL)
+	Tripay      Tripay
+	Midtrans    Midtrans
+}
+
+// ActiveProvider menormalkan nama provider aktif (lowercase, trim).
+func (p Payment) ActiveProvider() string { return strings.ToLower(strings.TrimSpace(p.Provider)) }
+
+// Tripay — gateway agregator. API Key untuk Bearer auth charge; Private Key untuk signature
+// charge (HMAC-SHA256(merchantCode+merchantRef+amount)) DAN verifikasi signature callback
+// (HMAC-SHA256 atas raw body). Method = kode channel QRIS (mis. "QRIS"/"QRIS2"/"QRISC").
+type Tripay struct {
+	APIKey       string
+	PrivateKey   string
+	MerchantCode string
+	Method       string
 	BaseURL      string
 }
 
-// Enabled menandakan jalur QRIS Xendit aktif (secret key terisi).
-func (x Xendit) Enabled() bool { return strings.TrimSpace(x.SecretKey) != "" }
+// Enabled: kredensial Tripay lengkap.
+func (t Tripay) Enabled() bool {
+	return strings.TrimSpace(t.APIKey) != "" && strings.TrimSpace(t.PrivateKey) != "" && strings.TrimSpace(t.MerchantCode) != ""
+}
+
+// Midtrans — Core API QRIS. Hanya Server Key yang dipakai server-side: Basic Auth charge DAN
+// verifikasi signature webhook (SHA512(order_id+status_code+gross_amount+ServerKey)).
+// Client Key milik frontend (Snap.js) dan tidak diperlukan karena QR dirender dari Core API.
+type Midtrans struct {
+	ServerKey string
+	BaseURL   string
+}
+
+// Enabled: server key Midtrans terisi.
+func (m Midtrans) Enabled() bool { return strings.TrimSpace(m.ServerKey) != "" }
 
 // ObjectStorage adalah konfigurasi penyimpanan objek S3-compatible (idcloudhost).
 // Objek di-upload public-read, disajikan via URL langsung (lihat PublicURL).
@@ -77,11 +110,7 @@ func Load() (Config, error) {
 			AccessTTL:  getDuration("JWT_ACCESS_TTL", 15*time.Minute),
 			RefreshTTL: getDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
 		},
-		Xendit: Xendit{
-			SecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
-			WebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
-			BaseURL:      getEnv("XENDIT_BASE_URL", "https://api.xendit.co"),
-		},
+		Payment: loadPayment(),
 		Storage: ObjectStorage{
 			Endpoint:      getEnv("OBJSTORE_ENDPOINT", ""),
 			Region:        getEnv("OBJSTORE_REGION", ""),
@@ -108,6 +137,45 @@ func (c Config) validate() error {
 		return fmt.Errorf("config: JWT_SECRET wajib diisi (min 16 karakter)")
 	}
 	return nil
+}
+
+// loadPayment menyusun konfigurasi pembayaran: provider aktif + sandbox/production +
+// kredensial tiap provider dengan BaseURL yang diturunkan dari mode (kecuali di-override).
+func loadPayment() Payment {
+	sandbox := strings.ToLower(getEnv("PAYMENT_ENV", "sandbox")) != "production"
+
+	tripayBase := getEnv("TRIPAY_BASE_URL", "")
+	if tripayBase == "" {
+		tripayBase = "https://tripay.co.id/api"
+		if sandbox {
+			tripayBase = "https://tripay.co.id/api-sandbox"
+		}
+	}
+	midtransBase := getEnv("MIDTRANS_BASE_URL", "")
+	if midtransBase == "" {
+		midtransBase = "https://api.midtrans.com"
+		if sandbox {
+			midtransBase = "https://api.sandbox.midtrans.com"
+		}
+	}
+
+	publicBase := getEnv("PUBLIC_BASE_URL", "http://localhost:8081")
+	return Payment{
+		Provider:    os.Getenv("PAYMENT_PROVIDER"),
+		Sandbox:     sandbox,
+		CallbackURL: strings.TrimRight(publicBase, "/") + "/api/v1/webhooks/payment",
+		Tripay: Tripay{
+			APIKey:       os.Getenv("TRIPAY_API_KEY"),
+			PrivateKey:   os.Getenv("TRIPAY_PRIVATE_KEY"),
+			MerchantCode: os.Getenv("TRIPAY_MERCHANT_CODE"),
+			Method:       getEnv("TRIPAY_QRIS_METHOD", "QRIS"),
+			BaseURL:      tripayBase,
+		},
+		Midtrans: Midtrans{
+			ServerKey: os.Getenv("MIDTRANS_SERVER_KEY"),
+			BaseURL:   midtransBase,
+		},
+	}
 }
 
 // buildDSN menyusun DSN MySQL dari variabel terpisah (DB_HOST/PORT/USERNAME/PASSWORD/NAME).

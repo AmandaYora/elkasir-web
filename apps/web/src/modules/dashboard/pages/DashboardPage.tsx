@@ -1,4 +1,14 @@
-import { DollarSign, Receipt, Wallet, QrCode, Loader2, type LucideIcon } from "lucide-react";
+import {
+  DollarSign,
+  Receipt,
+  Wallet,
+  QrCode,
+  Loader2,
+  ShoppingBag,
+  Sparkles,
+  Landmark,
+  type LucideIcon,
+} from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -161,6 +171,31 @@ export default function DashboardPage() {
           icon={QrCode}
           accent="warning"
         />
+      </div>
+
+      {/* Rincian keuangan: pisahkan uang penjualan, layanan, dan pajak. */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-text">Rincian Keuangan</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Penjualan"
+            value={formatIDR(summary?.salesTotal ?? 0)}
+            icon={ShoppingBag}
+            accent="primary"
+          />
+          <StatCard
+            label="Layanan"
+            value={formatIDR(summary?.serviceTotal ?? 0)}
+            icon={Sparkles}
+            accent="info"
+          />
+          <StatCard
+            label="Pajak (PPN)"
+            value={formatIDR(summary?.taxTotal ?? 0)}
+            icon={Landmark}
+            accent="warning"
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

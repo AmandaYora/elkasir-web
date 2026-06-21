@@ -12,17 +12,18 @@ import (
 
 const createPayment = `-- name: CreatePayment :exec
 INSERT INTO payments (id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload)
-VALUES (?, ?, ?, 'xendit', ?, 'qris', ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, 'qris', ?, ?, ?)
 `
 
 type CreatePaymentParams struct {
-	ID          string         `json:"id"`
-	StoreID     string         `json:"storeId"`
-	SelfOrderID string         `json:"selfOrderId"`
-	ProviderRef sql.NullString `json:"providerRef"`
-	Amount      int64          `json:"amount"`
-	Status      PaymentsStatus `json:"status"`
-	RawPayload  sql.NullString `json:"rawPayload"`
+	ID          string           `json:"id"`
+	StoreID     string           `json:"storeId"`
+	SelfOrderID string           `json:"selfOrderId"`
+	Provider    PaymentsProvider `json:"provider"`
+	ProviderRef sql.NullString   `json:"providerRef"`
+	Amount      int64            `json:"amount"`
+	Status      PaymentsStatus   `json:"status"`
+	RawPayload  sql.NullString   `json:"rawPayload"`
 }
 
 func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) error {
@@ -30,6 +31,7 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) er
 		arg.ID,
 		arg.StoreID,
 		arg.SelfOrderID,
+		arg.Provider,
 		arg.ProviderRef,
 		arg.Amount,
 		arg.Status,
@@ -54,7 +56,7 @@ func (q *Queries) CreateWebhookEvent(ctx context.Context, arg CreateWebhookEvent
 }
 
 const getPaymentByProviderRef = `-- name: GetPaymentByProviderRef :one
-SELECT id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload, created_at, updated_at FROM payments WHERE provider_ref = ? LIMIT 1
+SELECT id, store_id, self_order_id, provider_ref, method, amount, status, raw_payload, created_at, updated_at, provider FROM payments WHERE provider_ref = ? LIMIT 1
 `
 
 func (q *Queries) GetPaymentByProviderRef(ctx context.Context, providerRef sql.NullString) (Payment, error) {
@@ -64,7 +66,6 @@ func (q *Queries) GetPaymentByProviderRef(ctx context.Context, providerRef sql.N
 		&i.ID,
 		&i.StoreID,
 		&i.SelfOrderID,
-		&i.Provider,
 		&i.ProviderRef,
 		&i.Method,
 		&i.Amount,
@@ -72,12 +73,13 @@ func (q *Queries) GetPaymentByProviderRef(ctx context.Context, providerRef sql.N
 		&i.RawPayload,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
 	)
 	return i, err
 }
 
 const getPaymentBySelfOrder = `-- name: GetPaymentBySelfOrder :one
-SELECT id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload, created_at, updated_at FROM payments WHERE self_order_id = ? ORDER BY created_at DESC LIMIT 1
+SELECT id, store_id, self_order_id, provider_ref, method, amount, status, raw_payload, created_at, updated_at, provider FROM payments WHERE self_order_id = ? ORDER BY created_at DESC LIMIT 1
 `
 
 func (q *Queries) GetPaymentBySelfOrder(ctx context.Context, selfOrderID string) (Payment, error) {
@@ -87,7 +89,6 @@ func (q *Queries) GetPaymentBySelfOrder(ctx context.Context, selfOrderID string)
 		&i.ID,
 		&i.StoreID,
 		&i.SelfOrderID,
-		&i.Provider,
 		&i.ProviderRef,
 		&i.Method,
 		&i.Amount,
@@ -95,6 +96,7 @@ func (q *Queries) GetPaymentBySelfOrder(ctx context.Context, selfOrderID string)
 		&i.RawPayload,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
 	)
 	return i, err
 }

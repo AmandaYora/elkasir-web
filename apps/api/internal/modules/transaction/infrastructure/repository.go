@@ -35,10 +35,6 @@ func (r *Repo) Idempotency(ctx context.Context, storeID, key string) (sqlcgen.Id
 	return r.q.GetIdempotencyKey(ctx, sqlcgen.GetIdempotencyKeyParams{StoreID: storeID, IdempotencyKey: key})
 }
 
-func (r *Repo) Settings(ctx context.Context, storeID string) (sqlcgen.Setting, error) {
-	return r.q.GetSettingsByStore(ctx, storeID)
-}
-
 // List mengembalikan transaksi terfilter + total (query dinamis ditulis tangan).
 func (r *Repo) List(ctx context.Context, f domain.ListFilter) ([]sqlcgen.Transaction, int64, error) {
 	var where strings.Builder
@@ -76,8 +72,8 @@ func (r *Repo) List(ctx context.Context, f domain.ListFilter) ([]sqlcgen.Transac
 
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source,
-		 payment_method, status, subtotal, discount, tax, total, amount_received, change_amount,
-		 discount_approved_by, customer_note, created_at FROM transactions `+
+		 payment_method, status, subtotal, discount, tax, service_charge, gateway_fee, total,
+		 amount_received, change_amount, discount_approved_by, customer_note, created_at FROM transactions `+
 			where.String()+" ORDER BY created_at DESC LIMIT ? OFFSET ?",
 		append(args, f.Limit, f.Offset)...)
 	if err != nil {
@@ -90,7 +86,7 @@ func (r *Repo) List(ctx context.Context, f domain.ListFilter) ([]sqlcgen.Transac
 		var t sqlcgen.Transaction
 		if err := rows.Scan(&t.ID, &t.StoreID, &t.Code, &t.ShiftID, &t.TableID, &t.SelfOrderID,
 			&t.CashierID, &t.OrderType, &t.Source, &t.PaymentMethod, &t.Status, &t.Subtotal,
-			&t.Discount, &t.Tax, &t.Total, &t.AmountReceived, &t.ChangeAmount, &t.DiscountApprovedBy,
+			&t.Discount, &t.Tax, &t.ServiceCharge, &t.GatewayFee, &t.Total, &t.AmountReceived, &t.ChangeAmount, &t.DiscountApprovedBy,
 			&t.CustomerNote, &t.CreatedAt); err != nil {
 			return nil, 0, err
 		}

@@ -30,12 +30,14 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(httpserver.RateLimit(60))
 		r.Get("/{tableCode}", h.menu)
 		r.Post("/{tableCode}", h.place)
+		r.Post("/{tableCode}/quote", h.quote)
 		r.Get("/status/{selfOrderId}", h.status)
-		r.Post("/{selfOrderId}/simulate-paid", h.simulatePaid) // DEV (tanpa Xendit)
+		r.Post("/{selfOrderId}/simulate-paid", h.simulatePaid) // DEV (gateway nonaktif)
 	})
 
-	// Webhook Xendit (verifikasi token di handler).
-	r.Post("/webhooks/xendit", h.webhook)
+	// Webhook pembayaran (provider-agnostic) — verifikasi signature di module payment sesuai
+	// provider aktif (Tripay/Midtrans). Daftarkan URL ini di dashboard provider.
+	r.Post("/webhooks/payment", h.webhook)
 
 	// Staf/admin — pesanan masuk & tebus barcode.
 	r.Route("/self-orders", func(r chi.Router) {
@@ -68,6 +70,20 @@ func (h *Handler) place(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.Created(w, res, "Pesanan berhasil dibuat")
+}
+
+func (h *Handler) quote(w http.ResponseWriter, r *http.Request) {
+	var in application.PlaceInput
+	if err := httpx.DecodeJSON(w, r, &in); err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	dto, err := h.svc.Quote(r.Context(), chi.URLParam(r, "tableCode"), in)
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, dto)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {

@@ -230,13 +230,27 @@ Copy from `.env.example`. Backend variables go in `apps/api/.env`; only
 | `JWT_ACCESS_TTL` | `15m` | Access-token lifetime. |
 | `JWT_REFRESH_TTL` | `168h` | Refresh-token lifetime. |
 
-### Payments — Xendit (QRIS, sandbox)
+### Payments — QRIS (provider-agnostic: Tripay or Midtrans)
+
+One provider is active, chosen by `PAYMENT_PROVIDER`; `PAYMENT_ENV` picks sandbox vs production
+(each provider's `*_BASE_URL` is derived from it unless overridden).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `XENDIT_SECRET_KEY` | _(empty = QRIS disabled)_ | Provider secret key. |
-| `XENDIT_WEBHOOK_TOKEN` | _(empty)_ | Verifies inbound payment webhooks. |
-| `XENDIT_BASE_URL` | `https://api.xendit.co` | Provider API base URL. |
+| `PAYMENT_PROVIDER` | _(empty = simulation)_ | `tripay` \| `midtrans`. Selects the active gateway. |
+| `PAYMENT_ENV` | `sandbox` | `sandbox` \| `production` — derives each provider's base URL. |
+| `TRIPAY_API_KEY` | _(empty)_ | Tripay API Key (Bearer auth for charge). |
+| `TRIPAY_PRIVATE_KEY` | _(empty)_ | Tripay Private Key (charge signature + callback verification). |
+| `TRIPAY_MERCHANT_CODE` | _(empty)_ | Tripay Merchant Code (part of the charge signature). |
+| `TRIPAY_QRIS_METHOD` | `QRIS` | Tripay channel code for QRIS. |
+| `TRIPAY_BASE_URL` | _(derived)_ | Override; default `…/api-sandbox` (sandbox) or `…/api` (production). |
+| `MIDTRANS_SERVER_KEY` | _(empty)_ | Midtrans Server Key (Basic Auth charge + webhook signature). |
+| `MIDTRANS_BASE_URL` | _(derived)_ | Override; default `api.sandbox.midtrans.com` or `api.midtrans.com`. |
+
+Empty credentials for the active provider → QRIS runs in **simulation** (dev). Webhook endpoint
+to register in the active provider's dashboard: `<PUBLIC_BASE_URL>/api/v1/webhooks/payment`.
+Authenticity is verified per provider (Tripay `X-Callback-Signature` HMAC-SHA256 of raw body;
+Midtrans `signature_key` SHA512).
 
 ### Frontend (`apps/web`)
 

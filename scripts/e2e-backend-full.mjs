@@ -1,11 +1,20 @@
 // COMPREHENSIVE backend E2E — exercises every previously-untested module/endpoint
 // against the live API exactly as real clients do, plus edge cases & cross-tenant checks.
 // Run: node scripts/e2e-backend-full.mjs   (API up + base fixtures seeded)
+//
+// NOTE: the WEBHOOK block targets the ACTIVE provider (default Tripay) and signs the callback
+// with TRIPAY_PRIVATE_KEY — the API under test MUST run with PAYMENT_PROVIDER=tripay and the
+// SAME private key (else every signature is rejected). With Tripay enabled, the QRIS charge in
+// that block hits the Tripay sandbox, so this block needs sandbox creds.
+import { createHmac } from 'node:crypto';
 const BASE = process.env.API_BASE_URL || 'http://localhost:8081/api/v1';
 const ADMIN = { email: 'admin', password: 'admin123' };           // seeded owner
 const CASHIER = { username: 'kasiruji', password: 'kasir123' };    // seeded staff cashier
 const SUP = { username: 'supuji', password: 'super123' };          // seeded staff supervisor
-const WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || 'elk-test-webhook-token';
+const TRIPAY_PRIVATE_KEY = process.env.TRIPAY_PRIVATE_KEY || 'elk-test-private-key';
+// Tripay callback signature = HMAC-SHA256(raw_json_body, private_key).
+const tripaySig = (rawBody) =>
+  createHmac('sha256', TRIPAY_PRIVATE_KEY).update(rawBody).digest('hex');
 const STORE_B_PRODUCT_ID = process.env.STORE_B_PRODUCT_ID || '';   // inserted via SQL for tenancy test
 const TAG = String(Date.now()).slice(-6);
 
@@ -298,25 +307,37 @@ let prod; // base product Kopi Uji
     ok(missing.status === 404, 'PATCH status on unknown order 404');
   }
 
-  // ===================== WEBHOOK (Xendit production path) =====================
-  section('WEBHOOK: token guard + paid fulfilment + idempotency');
+  // ===================== WEBHOOK (Tripay callback path) =====================
+  // Active provider = Tripay → POST /webhooks/payment, verified via X-Callback-Signature
+  // = HMAC-SHA256(raw_body, TRIPAY_PRIVATE_KEY). Raw body string is signed verbatim.
+  section('WEBHOOK: signature guard + paid fulfilment + idempotency');
   {
     const placed = await api(`/public/order/MEJA-UJI`, { method: 'POST', body: { items: [{ productId: prod.id, quantity: 1 }], paymentMethod: 'qris' } });
     const soId = placed.json.data.order.id;
     const stock0 = (await api(`/products/${prod.id}`, { token: AT })).json.data.stock;
 
-    const wrongTok = await api('/webhooks/xendit', { method: 'POST', headers: { 'x-callback-token': 'salah' }, body: { id: `evt-${TAG}-1`, event: 'qr.payment', data: { reference_id: soId, status: 'PAID', amount: 12000 } } });
-    ok(wrongTok.status === 401, 'webhook with wrong token 401');
+    const ref = `T-${TAG}`;
+    const rawBody = (status = 'PAID') => JSON.stringify({
+      reference: ref, merchant_ref: soId, payment_method: 'QRIS', payment_method_code: 'QRIS',
+      total_amount: 12000, status, is_closed_payment: 1,
+    });
+    const cb = (raw, sig) => api('/webhooks/payment', {
+      method: 'POST', raw, headers: { 'X-Callback-Event': 'payment_status', 'X-Callback-Signature': sig },
+    });
 
-    const evtId = `evt-${TAG}-ok`;
-    const good = await api('/webhooks/xendit', { method: 'POST', headers: { 'x-callback-token': WEBHOOK_TOKEN }, body: { id: evtId, event: 'qr.payment', data: { reference_id: soId, status: 'PAID', amount: 12000 } } });
-    ok(good.status === 200, 'webhook with valid token + paid event 200');
+    const paidRaw = rawBody('PAID');
+    const wrongSig = await cb(paidRaw, 'salah');
+    ok(wrongSig.status === 401, 'webhook with wrong signature 401');
+
+    const sig = tripaySig(paidRaw);
+    const good = await cb(paidRaw, sig);
+    ok(good.status === 200, 'webhook with valid signature + PAID 200');
     const st = await api(`/public/order/status/${soId}`);
     ok(st.json.data.paymentStatus === 'paid', 'webhook marked order paid');
     const stock1 = (await api(`/products/${prod.id}`, { token: AT })).json.data.stock;
     ok(stock1 === stock0 - 1, `webhook fulfilment decremented stock (${stock0} -> ${stock1})`);
 
-    const dupEvt = await api('/webhooks/xendit', { method: 'POST', headers: { 'x-callback-token': WEBHOOK_TOKEN }, body: { id: evtId, event: 'qr.payment', data: { reference_id: soId, status: 'PAID', amount: 12000 } } });
+    const dupEvt = await cb(paidRaw, sig);
     ok(dupEvt.status === 200, 'duplicate webhook event accepted (200)');
     const stock2 = (await api(`/products/${prod.id}`, { token: AT })).json.data.stock;
     ok(stock2 === stock1, 'duplicate webhook event does NOT double-decrement (idempotent)');

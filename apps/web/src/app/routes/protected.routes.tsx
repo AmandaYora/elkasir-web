@@ -16,6 +16,7 @@ const WithdrawalsPage = lazy(() => import("@/modules/withdrawals/pages/Withdrawa
 const StatisticsPage = lazy(() => import("@/modules/statistics/pages/StatisticsPage"));
 const StaffPage = lazy(() => import("@/modules/staff/pages/StaffPage"));
 const UsersPage = lazy(() => import("@/modules/users/pages/UsersPage"));
+const SettingsPage = lazy(() => import("@/modules/settings/pages/SettingsPage"));
 
 export const protectedRoutes: RouteObject[] = [
   {
@@ -33,6 +34,7 @@ export const protectedRoutes: RouteObject[] = [
       { path: ROUTE_PATHS.statistics, element: <StatisticsPage /> },
       { path: ROUTE_PATHS.staff, element: <StaffPage /> },
       { path: ROUTE_PATHS.users, element: <UsersPage /> },
+      { path: ROUTE_PATHS.settings, element: <SettingsPage /> },
     ],
   },
 ];

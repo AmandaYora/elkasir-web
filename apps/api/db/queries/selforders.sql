@@ -10,8 +10,8 @@ ORDER BY c.sort_order ASC, p.name ASC;
 -- name: CreateSelfOrder :exec
 INSERT INTO self_orders (
   id, store_id, table_id, status, payment_method, payment_status, claim_code,
-  subtotal, total, customer_note, expires_at
-) VALUES (?, ?, ?, 'placed', ?, ?, ?, ?, ?, ?, ?);
+  subtotal, service_charge, gateway_fee, tax, total, customer_note, expires_at
+) VALUES (?, ?, ?, 'placed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: CreateSelfOrderItem :exec
 INSERT INTO self_order_items (

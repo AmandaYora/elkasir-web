@@ -226,7 +226,9 @@ func (ns NullPaymentsMethod) Value() (driver.Value, error) {
 type PaymentsProvider string
 
 const (
-	PaymentsProviderXendit PaymentsProvider = "xendit"
+	PaymentsProviderXendit   PaymentsProvider = "xendit"
+	PaymentsProviderMidtrans PaymentsProvider = "midtrans"
+	PaymentsProviderTripay   PaymentsProvider = "tripay"
 )
 
 func (e *PaymentsProvider) Scan(src interface{}) error {
@@ -913,7 +915,6 @@ type Payment struct {
 	ID          string           `json:"id"`
 	StoreID     string           `json:"storeId"`
 	SelfOrderID string           `json:"selfOrderId"`
-	Provider    PaymentsProvider `json:"provider"`
 	ProviderRef sql.NullString   `json:"providerRef"`
 	Method      PaymentsMethod   `json:"method"`
 	Amount      int64            `json:"amount"`
@@ -921,6 +922,7 @@ type Payment struct {
 	RawPayload  sql.NullString   `json:"rawPayload"`
 	CreatedAt   time.Time        `json:"createdAt"`
 	UpdatedAt   time.Time        `json:"updatedAt"`
+	Provider    PaymentsProvider `json:"provider"`
 }
 
 type Product struct {
@@ -972,6 +974,9 @@ type SelfOrder struct {
 	ExpiresAt     sql.NullTime            `json:"expiresAt"`
 	CreatedAt     time.Time               `json:"createdAt"`
 	UpdatedAt     time.Time               `json:"updatedAt"`
+	ServiceCharge int64                   `json:"serviceCharge"`
+	GatewayFee    int64                   `json:"gatewayFee"`
+	Tax           int64                   `json:"tax"`
 }
 
 type SelfOrderItem struct {
@@ -997,6 +1002,9 @@ type Setting struct {
 	FeatureQris           bool      `json:"featureQris"`
 	CreatedAt             time.Time `json:"createdAt"`
 	UpdatedAt             time.Time `json:"updatedAt"`
+	TaxEnabled            bool      `json:"taxEnabled"`
+	TaxPercent            int32     `json:"taxPercent"`
+	ServicePercent        int32     `json:"servicePercent"`
 }
 
 type Shift struct {
@@ -1068,6 +1076,8 @@ type Transaction struct {
 	DiscountApprovedBy sql.NullString            `json:"discountApprovedBy"`
 	CustomerNote       sql.NullString            `json:"customerNote"`
 	CreatedAt          time.Time                 `json:"createdAt"`
+	ServiceCharge      int64                     `json:"serviceCharge"`
+	GatewayFee         int64                     `json:"gatewayFee"`
 }
 
 type TransactionItem struct {

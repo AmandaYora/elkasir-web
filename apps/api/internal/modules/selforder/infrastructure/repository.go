@@ -103,7 +103,7 @@ func (r *Repo) ListIncoming(ctx context.Context, storeID, status string, limit, 
 	}
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, store_id, table_id, status, payment_method, payment_status, claim_code,
-		 subtotal, total, customer_note, transaction_id, expires_at, created_at, updated_at
+		 subtotal, service_charge, gateway_fee, tax, total, customer_note, transaction_id, expires_at, created_at, updated_at
 		 FROM self_orders `+where+" ORDER BY created_at DESC LIMIT ? OFFSET ?",
 		append(args, limit, offset)...)
 	if err != nil {
@@ -114,7 +114,7 @@ func (r *Repo) ListIncoming(ctx context.Context, storeID, status string, limit, 
 	for rows.Next() {
 		var s sqlcgen.SelfOrder
 		if err := rows.Scan(&s.ID, &s.StoreID, &s.TableID, &s.Status, &s.PaymentMethod, &s.PaymentStatus,
-			&s.ClaimCode, &s.Subtotal, &s.Total, &s.CustomerNote, &s.TransactionID, &s.ExpiresAt,
+			&s.ClaimCode, &s.Subtotal, &s.ServiceCharge, &s.GatewayFee, &s.Tax, &s.Total, &s.CustomerNote, &s.TransactionID, &s.ExpiresAt,
 			&s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
