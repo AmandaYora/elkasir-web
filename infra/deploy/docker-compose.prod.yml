@@ -1,0 +1,26 @@
+# Production compose (server-side). IMAGE-ONLY — there is NO `build:` here: the VPS
+# only PULLS a ready-made image from GHCR (built by CI). Never build on the 2 GB box.
+#
+# Lives on the server at ~/elkasir/docker-compose.prod.yml next to ~/elkasir/.env.
+# Deploy with ~/elkasir/deploy.sh <git-sha>  (see deploy.sh).
+services:
+  app:
+    image: ghcr.io/amandayora/elkasir-web:${IMAGE_TAG:-latest}
+    container_name: elkasir-app
+    restart: unless-stopped
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach host MySQL
+    ports:
+      - "127.0.0.1:8081:8081" # localhost only; host nginx fronts it + TLS
+    healthcheck:
+      test: ["CMD", "/app/api", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    logging: # cap logs so disk can't fill
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

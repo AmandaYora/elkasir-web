@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # allow manual image rebuilds without a new commit
 
 jobs:
   api:
@@ -50,3 +51,34 @@ jobs:
       - run: npm ci
       - run: npm run lint -w @elkasir/web
       - run: npm run build -w @elkasir/web
+
+  # Build & push the one-container image to GHCR — ONLY after all gates pass, and
+  # only on push to main (not PRs). The image embeds the SPA into the Go binary;
+  # the server just pulls it (see docs/DEPLOYMENT_PIPELINE.md). GHCR requires
+  # lowercase: owner AmandaYora -> amandayora.
+  image:
+    name: Build & push image (GHCR)
+    needs: [api, contract, web]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # built-in, no PAT needed to push
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/amandayora/elkasir-web:latest
+            ghcr.io/amandayora/elkasir-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

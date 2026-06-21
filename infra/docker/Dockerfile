@@ -34,8 +34,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./c
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=api /out/api /app/api
-# Migrations are bundled for tooling/sidecars (run separately, not on boot).
+# Migrations are also embedded in the binary (go:embed) — `api migrate up` works from
+# this image. The copy below keeps them on disk too for external tooling/inspection.
 COPY --from=api /src/db/migrations /app/db/migrations
 EXPOSE 8081
+# Self-check via the binary's healthcheck subcommand (no shell/curl in distroless).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD ["/app/api", "healthcheck"]
 USER nonroot:nonroot
 ENTRYPOINT ["/app/api"]
