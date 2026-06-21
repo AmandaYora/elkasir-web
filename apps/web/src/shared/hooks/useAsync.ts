@@ -18,7 +18,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
       const data = await fn();
       setState({ data, loading: false, error: null });
     } catch (e) {
-      setState({ data: null, loading: false, error: e instanceof Error ? e.message : "Gagal memuat data." });
+      setState({
+        data: null,
+        loading: false,
+        error: e instanceof Error ? e.message : "Gagal memuat data.",
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

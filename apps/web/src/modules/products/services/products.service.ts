@@ -12,5 +12,6 @@ export const productsService = {
   adjustStock: (id: string, delta: number) =>
     api.post<Product>(`${endpoints.products}/${id}/adjust-stock`, { delta }),
   // Category options for the product form (read-only helper; products owns its own fetch).
-  listCategories: () => api.getPage<CategoryOption>(endpoints.categories, { query: { limit: 200 } }),
+  listCategories: () =>
+    api.getPage<CategoryOption>(endpoints.categories, { query: { limit: 200 } }),
 };

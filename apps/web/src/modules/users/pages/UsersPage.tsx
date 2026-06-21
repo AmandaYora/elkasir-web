@@ -6,7 +6,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -220,7 +227,9 @@ export default function UsersPage() {
       <ConfirmDialog
         open={!!deleting}
         title="Hapus pengguna ini?"
-        description={deleting ? `Tindakan ini mencabut akses dashboard untuk "${deleting.name}".` : ""}
+        description={
+          deleting ? `Tindakan ini mencabut akses dashboard untuk "${deleting.name}".` : ""
+        }
         confirmLabel="Hapus"
         danger
         loading={busy}
@@ -320,7 +329,10 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
       </div>
       <div className="grid gap-2">
         <Label>Peran</Label>
-        <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as AdminRole })}>
+        <Select
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value as AdminRole })}
+        >
           <option value="owner">Pemilik</option>
           <option value="admin">Admin</option>
           <option value="manager">Manajer</option>
@@ -346,7 +358,13 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
   );
 }
 
-function ResetPasswordModal({ target, onClose }: { target: AdminUser | null; onClose: () => void }) {
+function ResetPasswordModal({
+  target,
+  onClose,
+}: {
+  target: AdminUser | null;
+  onClose: () => void;
+}) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 

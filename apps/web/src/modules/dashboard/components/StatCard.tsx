@@ -25,7 +25,9 @@ export function StatCard({
   return (
     <Card>
       <CardContent className="flex items-center gap-4 p-4">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${accentClasses[accent]}`}>
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${accentClasses[accent]}`}
+        >
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">

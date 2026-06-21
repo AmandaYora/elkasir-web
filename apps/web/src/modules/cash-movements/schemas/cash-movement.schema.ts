@@ -9,7 +9,11 @@ export const cashMovementSchema = z
   })
   .superRefine((val, ctx) => {
     if ((val.type === "capital" || val.type === "expense") && val.amount <= 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Nominal harus lebih dari 0.", path: ["amount"] });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Nominal harus lebih dari 0.",
+        path: ["amount"],
+      });
     }
     if (val.type === "adjustment" && val.amount === 0) {
       ctx.addIssue({

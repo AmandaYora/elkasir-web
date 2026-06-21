@@ -14,7 +14,15 @@ export interface ModalProps {
 }
 
 // Minimal accessible modal (overlay + centered panel, Esc to close). No headless deps.
-export function Modal({ open, onClose, title, description, children, footer, className }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  className,
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -53,7 +61,9 @@ export function Modal({ open, onClose, title, description, children, footer, cla
           </div>
         )}
         <div className="max-h-[70vh] overflow-y-auto p-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-border p-4">{footer}</div>}
+        {footer && (
+          <div className="flex justify-end gap-2 border-t border-border p-4">{footer}</div>
+        )}
       </div>
     </div>,
     document.body,

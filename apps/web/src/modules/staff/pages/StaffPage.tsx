@@ -6,7 +6,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -114,10 +121,7 @@ export default function StaffPage() {
         ) : staffQuery.error ? (
           <ErrorState message={`Gagal memuat staf. ${staffQuery.error}`} onRetry={refresh} />
         ) : data.length === 0 ? (
-          <EmptyState
-            title="Belum ada staf"
-            description="Tambahkan anggota tim pertama Anda."
-          />
+          <EmptyState title="Belum ada staf" description="Tambahkan anggota tim pertama Anda." />
         ) : (
           <Table>
             <TableHeader>
@@ -314,7 +318,10 @@ function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => v
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
           <Label>Peran</Label>
-          <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as StaffRole })}>
+          <Select
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value as StaffRole })}
+          >
             <option value="cashier">Kasir</option>
             <option value="supervisor">Supervisor</option>
           </Select>

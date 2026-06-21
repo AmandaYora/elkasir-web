@@ -66,7 +66,9 @@ export function AppSidebar() {
       <nav className="flex-1 overflow-y-auto py-2">
         {groups.map((group) => (
           <div key={group.label} className="px-2 py-1.5">
-            <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted">{group.label}</p>
+            <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+              {group.label}
+            </p>
             <ul className="space-y-0.5">
               {group.items.map((item) => (
                 <li key={item.title}>

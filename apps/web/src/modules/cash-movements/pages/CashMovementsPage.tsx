@@ -6,8 +6,21 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/shared/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { formatIDR, formatDateTime } from "@/shared/lib/formatter";
@@ -62,8 +75,20 @@ export default function CashMovementsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Kas Masuk" value={formatIDR(cashIn)} hint="periode ini" icon={ArrowDownCircle} tone="text-success" />
-        <StatCard label="Kas Keluar" value={formatIDR(cashOut)} hint="periode ini" icon={ArrowUpCircle} tone="text-warning" />
+        <StatCard
+          label="Kas Masuk"
+          value={formatIDR(cashIn)}
+          hint="periode ini"
+          icon={ArrowDownCircle}
+          tone="text-success"
+        />
+        <StatCard
+          label="Kas Keluar"
+          value={formatIDR(cashOut)}
+          hint="periode ini"
+          icon={ArrowUpCircle}
+          tone="text-warning"
+        />
         <StatCard
           label="Mutasi Bersih"
           value={(net >= 0 ? "+" : "") + formatIDR(net)}
@@ -81,7 +106,10 @@ export default function CashMovementsPage() {
         {movementsQuery.loading ? (
           <LoadingState />
         ) : movementsQuery.error ? (
-          <ErrorState message={`Gagal memuat mutasi kas. ${movementsQuery.error}`} onRetry={refresh} />
+          <ErrorState
+            message={`Gagal memuat mutasi kas. ${movementsQuery.error}`}
+            onRetry={refresh}
+          />
         ) : items.length === 0 ? (
           <EmptyState title="Belum ada mutasi kas." />
         ) : (
@@ -101,7 +129,9 @@ export default function CashMovementsPage() {
                 const signed = signedAmount(m);
                 return (
                   <TableRow key={m.id}>
-                    <TableCell className="text-sm text-muted">{formatDateTime(m.createdAt)}</TableCell>
+                    <TableCell className="text-sm text-muted">
+                      {formatDateTime(m.createdAt)}
+                    </TableCell>
                     <TableCell>
                       <CashMovementTypeBadge type={m.type} />
                     </TableCell>
@@ -210,7 +240,12 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
       </div>
       <div className="grid gap-2">
         <Label>Nominal (IDR)</Label>
-        <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <Input
+          type="number"
+          placeholder="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
         {type === "adjustment" && (
           <p className="text-xs text-muted">Boleh negatif untuk mengurangi kas (mis. -5000).</p>
         )}

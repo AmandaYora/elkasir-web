@@ -7,7 +7,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { Pagination } from "@/shared/components/ui/pagination";
@@ -230,14 +237,23 @@ export default function TablesPage() {
           <div className="space-y-5">
             <div className="flex flex-col items-center rounded-xl border border-border p-5">
               <QRCodeCanvas ref={qrRef} value={orderUrl(detail.code)} size={220} includeMargin />
-              <div className="mt-3 font-mono text-sm font-semibold tracking-wider">MEJA {detail.code}</div>
-              <div className="mt-1 break-all text-center text-xs text-muted">{orderUrl(detail.code)}</div>
+              <div className="mt-3 font-mono text-sm font-semibold tracking-wider">
+                MEJA {detail.code}
+              </div>
+              <div className="mt-1 break-all text-center text-xs text-muted">
+                {orderUrl(detail.code)}
+              </div>
             </div>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={() => printQr(detail)}>
                 <Printer className="h-4 w-4" /> Cetak QR
               </Button>
-              <Button variant="outline" className="flex-1" loading={busy} onClick={() => toggleStatus(detail)}>
+              <Button
+                variant="outline"
+                className="flex-1"
+                loading={busy}
+                onClick={() => toggleStatus(detail)}
+              >
                 {detail.status === "active" ? "Nonaktifkan" : "Aktifkan"}
               </Button>
             </div>
@@ -253,7 +269,8 @@ export default function TablesPage() {
               <Pencil className="h-3.5 w-3.5" /> Ubah Meja
             </Button>
             <p className="text-center text-xs text-muted">
-              Cetak lalu tempel di meja. Pelanggan scan → memilih menu → bayar QRIS → pesanan masuk ke kasir.
+              Cetak lalu tempel di meja. Pelanggan scan → memilih menu → bayar QRIS → pesanan masuk
+              ke kasir.
             </p>
           </div>
         )}
@@ -326,7 +343,11 @@ function TableForm({
     <div className="grid gap-4">
       <div className="grid gap-2">
         <Label>Kode Meja</Label>
-        <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="mis. A3" />
+        <Input
+          value={form.code}
+          onChange={(e) => setForm({ ...form, code: e.target.value })}
+          placeholder="mis. A3"
+        />
       </div>
       <div className="grid gap-2">
         <Label>Nama Tampilan</Label>

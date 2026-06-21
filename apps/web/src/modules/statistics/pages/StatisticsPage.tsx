@@ -15,7 +15,13 @@ import {
   Legend,
 } from "recharts";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/shared/components/ui/card";
 import { formatIDR } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { cn } from "@/shared/lib/cn";
@@ -81,7 +87,9 @@ function ChartState({
     );
   if (isEmpty)
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted">Belum ada data</div>
+      <div className="flex h-full items-center justify-center text-sm text-muted">
+        Belum ada data
+      </div>
     );
   return <>{children}</>;
 }
@@ -106,10 +114,7 @@ export default function StatisticsPage() {
   const [range, setRange] = useState("30");
   const days = Number(range);
 
-  const period = useMemo(
-    () => ({ from: ymd(daysAgo(days)), to: ymd(new Date()) }),
-    [days],
-  );
+  const period = useMemo(() => ({ from: ymd(daysAgo(days)), to: ymd(new Date()) }), [days]);
 
   const salesQuery = useAsync(() => statisticsService.sales(period), [period.from, period.to]);
   const paymentQuery = useAsync(() => statisticsService.paymentDistribution(), []);
@@ -178,7 +183,11 @@ export default function StatisticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ChartState isLoading={salesQuery.loading} error={salesQuery.error} isEmpty={sales.length === 0}>
+              <ChartState
+                isLoading={salesQuery.loading}
+                error={salesQuery.error}
+                isEmpty={sales.length === 0}
+              >
                 <ResponsiveContainer>
                   <AreaChart data={sales}>
                     <defs>
@@ -226,7 +235,11 @@ export default function StatisticsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-72">
-              <ChartState isLoading={salesQuery.loading} error={salesQuery.error} isEmpty={sales.length === 0}>
+              <ChartState
+                isLoading={salesQuery.loading}
+                error={salesQuery.error}
+                isEmpty={sales.length === 0}
+              >
                 <ResponsiveContainer>
                   <BarChart data={sales}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={colors.border} />
@@ -245,7 +258,12 @@ export default function StatisticsPage() {
                       allowDecimals={false}
                     />
                     <Tooltip content={<CT />} />
-                    <Bar dataKey="txCount" name="Transaksi" fill={chartPalette[1]} radius={[6, 6, 0, 0]} />
+                    <Bar
+                      dataKey="txCount"
+                      name="Transaksi"
+                      fill={chartPalette[1]}
+                      radius={[6, 6, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartState>
@@ -320,7 +338,12 @@ export default function StatisticsPage() {
                       tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`}
                     />
                     <Tooltip content={<CT fmt={(v: number) => formatIDR(v)} />} />
-                    <Bar dataKey="revenue" name="Penjualan" fill={chartPalette[2]} radius={[6, 6, 0, 0]} />
+                    <Bar
+                      dataKey="revenue"
+                      name="Penjualan"
+                      fill={chartPalette[2]}
+                      radius={[6, 6, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartState>
@@ -344,7 +367,11 @@ export default function StatisticsPage() {
               >
                 <ResponsiveContainer>
                   <BarChart data={top} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke={colors.border} />
+                    <CartesianGrid
+                      horizontal={false}
+                      strokeDasharray="3 3"
+                      stroke={colors.border}
+                    />
                     <XAxis
                       type="number"
                       tickLine={false}
@@ -363,7 +390,12 @@ export default function StatisticsPage() {
                       width={110}
                     />
                     <Tooltip content={<CT />} />
-                    <Bar dataKey="qty" name="Terjual" fill={chartPalette[3]} radius={[0, 6, 6, 0]} />
+                    <Bar
+                      dataKey="qty"
+                      name="Terjual"
+                      fill={chartPalette[3]}
+                      radius={[0, 6, 6, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartState>

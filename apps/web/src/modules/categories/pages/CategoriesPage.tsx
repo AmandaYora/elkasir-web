@@ -6,7 +6,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Badge } from "@/shared/components/ui/badge";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
@@ -66,7 +73,9 @@ export default function CategoriesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">Kategori Produk</h2>
-          <p className="text-sm text-muted">{list.length} kategori · dipakai untuk mengelompokkan produk</p>
+          <p className="text-sm text-muted">
+            {list.length} kategori · dipakai untuk mengelompokkan produk
+          </p>
         </div>
         <Button
           size="sm"
@@ -184,7 +193,9 @@ export default function CategoriesPage() {
             try {
               if (editing) await categoriesService.update(editing.id, { name });
               else await categoriesService.create({ name });
-              toast.success(editing ? "Kategori berhasil diperbarui" : "Kategori berhasil ditambahkan");
+              toast.success(
+                editing ? "Kategori berhasil diperbarui" : "Kategori berhasil ditambahkan",
+              );
               setFormOpen(false);
               setEditing(null);
               refresh();
@@ -235,7 +246,9 @@ function CategoryForm({
       toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
       return;
     }
-    if (existing.some((c) => c.id !== editing?.id && c.name.toLowerCase() === value.toLowerCase())) {
+    if (
+      existing.some((c) => c.id !== editing?.id && c.name.toLowerCase() === value.toLowerCase())
+    ) {
       toast.error("Kategori sudah ada");
       return;
     }

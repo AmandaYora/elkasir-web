@@ -29,7 +29,13 @@ export function EmptyState({
   );
 }
 
-export function ErrorState({ message = "Terjadi kesalahan.", onRetry }: { message?: string; onRetry?: () => void }) {
+export function ErrorState({
+  message = "Terjadi kesalahan.",
+  onRetry,
+}: {
+  message?: string;
+  onRetry?: () => void;
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
       <AlertTriangle className="h-8 w-8 text-danger" />

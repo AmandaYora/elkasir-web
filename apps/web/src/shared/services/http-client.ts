@@ -11,7 +11,10 @@ import { storage } from "@/shared/lib/storage";
 import { ApiError, type ApiFailure, type ApiPaginated, type ApiSuccess } from "@/shared/types/api";
 import type { ListQuery, Page } from "@/shared/types/pagination";
 
-const BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1").replace(/\/$/, "");
+const BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1").replace(
+  /\/$/,
+  "",
+);
 
 const ACCESS_KEY = "elkasir_access_token";
 const REFRESH_KEY = "elkasir_refresh_token";
@@ -77,7 +80,9 @@ async function refreshTokens(): Promise<boolean> {
 httpClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError<ApiFailure>) => {
-    const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+    const original = error.config as
+      | (InternalAxiosRequestConfig & { _retried?: boolean })
+      | undefined;
 
     if (error.response?.status === 401 && original && !original._retried) {
       original._retried = true;
@@ -94,7 +99,10 @@ httpClient.interceptors.response.use(
       const code = body.errors?.[0]?.code ?? "internal";
       throw new ApiError(error.response?.status ?? 0, body.message, code, body.errors);
     }
-    throw new ApiError(error.response?.status ?? 0, error.message || "Tidak dapat terhubung ke server.");
+    throw new ApiError(
+      error.response?.status ?? 0,
+      error.message || "Tidak dapat terhubung ke server.",
+    );
   },
 );
 

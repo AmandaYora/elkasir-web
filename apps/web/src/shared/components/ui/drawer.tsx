@@ -14,7 +14,15 @@ export interface DrawerProps {
 }
 
 // Minimal side drawer (overlay + sliding panel, Esc to close).
-export function Drawer({ open, onClose, title, description, children, side = "right", className }: DrawerProps) {
+export function Drawer({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  side = "right",
+  className,
+}: DrawerProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

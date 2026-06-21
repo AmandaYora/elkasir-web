@@ -81,7 +81,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: toSession(res.user) });
       return { ok: true };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Tidak dapat masuk. Periksa koneksi lalu coba lagi.";
+      const message =
+        err instanceof Error ? err.message : "Tidak dapat masuk. Periksa koneksi lalu coba lagi.";
       return { ok: false, error: message };
     }
   },

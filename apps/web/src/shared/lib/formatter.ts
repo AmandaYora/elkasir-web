@@ -9,7 +9,10 @@ const dateTime = new Intl.DateTimeFormat("id-ID", {
   timeStyle: "short",
   timeZone: "Asia/Jakarta",
 });
-const dateOnly = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "Asia/Jakarta" });
+const dateOnly = new Intl.DateTimeFormat("id-ID", {
+  dateStyle: "medium",
+  timeZone: "Asia/Jakarta",
+});
 
 export const formatIDR = (n: number) => idr.format(n || 0);
 export const formatDateTime = (iso?: string | null) => (iso ? dateTime.format(new Date(iso)) : "—");

@@ -12,7 +12,8 @@ import type {
 // Report endpoints return plain objects/arrays (NOT paginated), so use api.get<T>.
 export const statisticsService = {
   sales: (query?: ListQuery) => api.get<SalesDay[]>(endpoints.reports.sales, { query }),
-  topProducts: (query?: ListQuery) => api.get<TopProduct[]>(endpoints.reports.topProducts, { query }),
+  topProducts: (query?: ListQuery) =>
+    api.get<TopProduct[]>(endpoints.reports.topProducts, { query }),
   salesByCategory: (query?: ListQuery) =>
     api.get<CategorySales[]>(endpoints.reports.salesByCategory, { query }),
   paymentDistribution: () => api.get<PaymentDistribution>(endpoints.reports.paymentDistribution),

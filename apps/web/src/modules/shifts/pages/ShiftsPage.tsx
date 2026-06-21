@@ -1,7 +1,20 @@
 import { useMemo, useState } from "react";
 import { Clock, Wallet, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/shared/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { formatIDR, formatDateTime, formatDate } from "@/shared/lib/formatter";
@@ -105,9 +118,15 @@ export default function ShiftsPage() {
         {shiftsQuery.loading ? (
           <LoadingState />
         ) : shiftsQuery.error ? (
-          <ErrorState message={`Gagal memuat shift. ${shiftsQuery.error}`} onRetry={() => shiftsQuery.refetch()} />
+          <ErrorState
+            message={`Gagal memuat shift. ${shiftsQuery.error}`}
+            onRetry={() => shiftsQuery.refetch()}
+          />
         ) : items.length === 0 ? (
-          <EmptyState title="Belum ada riwayat shift." description="Shift kasir yang dibuka akan muncul di sini." />
+          <EmptyState
+            title="Belum ada riwayat shift."
+            description="Shift kasir yang dibuka akan muncul di sini."
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -130,7 +149,9 @@ export default function ShiftsPage() {
                     <TableCell className="font-mono text-sm" title={s.staffId}>
                       {shortStaff(s.staffId)}
                     </TableCell>
-                    <TableCell className="text-sm text-muted">{formatDateTime(s.openedAt)}</TableCell>
+                    <TableCell className="text-sm text-muted">
+                      {formatDateTime(s.openedAt)}
+                    </TableCell>
                     <TableCell className="text-sm text-muted">
                       {s.closedAt ? formatDateTime(s.closedAt) : "—"}
                     </TableCell>
@@ -166,7 +187,12 @@ export default function ShiftsPage() {
         )}
       </Card>
 
-      <Drawer open={!!detailId} onClose={() => setDetailId(null)} title="Detail Shift" description="Rekonsiliasi kas">
+      <Drawer
+        open={!!detailId}
+        onClose={() => setDetailId(null)}
+        title="Detail Shift"
+        description="Rekonsiliasi kas"
+      >
         {detailId && <ShiftDetail id={detailId} />}
       </Drawer>
     </div>
@@ -179,7 +205,10 @@ function ShiftDetail({ id }: { id: string }) {
   if (detailQuery.loading) return <LoadingState />;
   if (detailQuery.error)
     return (
-      <ErrorState message={`Gagal memuat detail shift. ${detailQuery.error}`} onRetry={() => detailQuery.refetch()} />
+      <ErrorState
+        message={`Gagal memuat detail shift. ${detailQuery.error}`}
+        onRetry={() => detailQuery.refetch()}
+      />
     );
   const detail = detailQuery.data;
   if (!detail) return null;

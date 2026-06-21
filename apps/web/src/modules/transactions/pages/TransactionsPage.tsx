@@ -3,7 +3,14 @@ import { Search, CreditCard, Banknote } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { Pagination } from "@/shared/components/ui/pagination";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
@@ -128,7 +135,10 @@ export default function TransactionsPage() {
             onRetry={() => transactionsQuery.refetch()}
           />
         ) : paged.length === 0 ? (
-          <EmptyState title="Transaksi tidak ditemukan." description="Coba ubah filter atau kata kunci pencarian." />
+          <EmptyState
+            title="Transaksi tidak ditemukan."
+            description="Coba ubah filter atau kata kunci pencarian."
+          />
         ) : (
           <>
             <Table>
@@ -146,9 +156,13 @@ export default function TransactionsPage() {
                 {paged.map((t) => (
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => setDetailId(t.id)}>
                     <TableCell className="font-mono text-xs font-medium">{t.code}</TableCell>
-                    <TableCell className="text-sm text-muted">{formatDateTime(t.createdAt)}</TableCell>
+                    <TableCell className="text-sm text-muted">
+                      {formatDateTime(t.createdAt)}
+                    </TableCell>
                     <TableCell className="text-sm">
-                      <div className="font-medium">{ORDER_TYPE_LABEL[t.orderType] ?? t.orderType}</div>
+                      <div className="font-medium">
+                        {ORDER_TYPE_LABEL[t.orderType] ?? t.orderType}
+                      </div>
                       <div className="text-xs text-muted">{SOURCE_LABEL[t.source] ?? t.source}</div>
                     </TableCell>
                     <TableCell>
@@ -164,7 +178,9 @@ export default function TransactionsPage() {
                     <TableCell>
                       <TransactionStatusBadge status={t.status} />
                     </TableCell>
-                    <TableCell className="text-right text-sm font-semibold">{formatIDR(t.total)}</TableCell>
+                    <TableCell className="text-right text-sm font-semibold">
+                      {formatIDR(t.total)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -249,7 +265,9 @@ function TransactionDetailContent({ detail }: { detail: Transaction }) {
         <div className="text-xs font-medium uppercase tracking-wider text-muted">Pembayaran</div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Metode</span>
-          <span className="font-medium">{PAY_LABEL[detail.paymentMethod] ?? detail.paymentMethod}</span>
+          <span className="font-medium">
+            {PAY_LABEL[detail.paymentMethod] ?? detail.paymentMethod}
+          </span>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Sumber</span>
@@ -257,7 +275,9 @@ function TransactionDetailContent({ detail }: { detail: Transaction }) {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Jenis Pesanan</span>
-          <span className="font-medium">{ORDER_TYPE_LABEL[detail.orderType] ?? detail.orderType}</span>
+          <span className="font-medium">
+            {ORDER_TYPE_LABEL[detail.orderType] ?? detail.orderType}
+          </span>
         </div>
         {detail.customerNote && (
           <div className="flex items-center justify-between text-sm">

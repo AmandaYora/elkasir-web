@@ -24,7 +24,13 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         )}
         {...props}
       >
-        {options ? options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>) : children}
+        {options
+          ? options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))
+          : children}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
     </div>

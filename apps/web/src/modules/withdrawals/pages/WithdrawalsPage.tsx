@@ -6,7 +6,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
@@ -69,12 +76,12 @@ export default function WithdrawalsPage() {
         {withdrawalsQuery.loading ? (
           <LoadingState />
         ) : withdrawalsQuery.error ? (
-          <ErrorState message={`Gagal memuat penarikan. ${withdrawalsQuery.error}`} onRetry={refresh} />
-        ) : items.length === 0 ? (
-          <EmptyState
-            title="Belum ada penarikan."
-            description="Ajukan penarikan pertama Anda."
+          <ErrorState
+            message={`Gagal memuat penarikan. ${withdrawalsQuery.error}`}
+            onRetry={refresh}
           />
+        ) : items.length === 0 ? (
+          <EmptyState title="Belum ada penarikan." description="Ajukan penarikan pertama Anda." />
         ) : (
           <Table>
             <TableHeader>
@@ -90,13 +97,19 @@ export default function WithdrawalsPage() {
             <TableBody>
               {items.map((w) => (
                 <TableRow key={w.id} className="cursor-pointer" onClick={() => setDetail(w)}>
-                  <TableCell className="font-mono text-xs font-medium">{w.reference ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted">{formatDateTime(w.createdAt)}</TableCell>
+                  <TableCell className="font-mono text-xs font-medium">
+                    {w.reference ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted">
+                    {formatDateTime(w.createdAt)}
+                  </TableCell>
                   <TableCell className="text-sm">
                     {w.bank} <span className="font-mono text-xs text-muted">{w.account}</span>
                   </TableCell>
                   <TableCell className="text-sm">{w.holder}</TableCell>
-                  <TableCell className="text-right text-sm font-semibold">{formatIDR(w.amount)}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold">
+                    {formatIDR(w.amount)}
+                  </TableCell>
                   <TableCell>
                     <WithdrawalStatusBadge status={w.status} />
                   </TableCell>
@@ -189,7 +202,12 @@ function StatCard({
 }
 
 function WithdrawalForm({ onDone }: { onDone: () => void }) {
-  const [form, setForm] = useState<WithdrawalInput>({ amount: 0, bank: "", account: "", holder: "" });
+  const [form, setForm] = useState<WithdrawalInput>({
+    amount: 0,
+    bank: "",
+    account: "",
+    holder: "",
+  });
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {

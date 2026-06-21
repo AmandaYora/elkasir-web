@@ -1,11 +1,4 @@
-import {
-  DollarSign,
-  Receipt,
-  Wallet,
-  QrCode,
-  Loader2,
-  type LucideIcon,
-} from "lucide-react";
+import { DollarSign, Receipt, Wallet, QrCode, Loader2, type LucideIcon } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -20,7 +13,13 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/shared/components/ui/card";
 import { formatIDR, formatDateTime } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { useAuthStore } from "@/shared/stores/auth.store";
@@ -138,10 +137,30 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Pendapatan" value={formatIDR(summary?.revenue ?? 0)} icon={DollarSign} accent="primary" />
-        <StatCard label="Transaksi" value={String(summary?.txCount ?? 0)} icon={Receipt} accent="info" />
-        <StatCard label="Tunai" value={formatIDR(summary?.cashTotal ?? 0)} icon={Wallet} accent="success" />
-        <StatCard label="QRIS" value={formatIDR(summary?.qrisTotal ?? 0)} icon={QrCode} accent="warning" />
+        <StatCard
+          label="Pendapatan"
+          value={formatIDR(summary?.revenue ?? 0)}
+          icon={DollarSign}
+          accent="primary"
+        />
+        <StatCard
+          label="Transaksi"
+          value={String(summary?.txCount ?? 0)}
+          icon={Receipt}
+          accent="info"
+        />
+        <StatCard
+          label="Tunai"
+          value={formatIDR(summary?.cashTotal ?? 0)}
+          icon={Wallet}
+          accent="success"
+        />
+        <StatCard
+          label="QRIS"
+          value={formatIDR(summary?.qrisTotal ?? 0)}
+          icon={QrCode}
+          accent="warning"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -152,7 +171,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {salesQuery.loading || salesQuery.error || salesData.length === 0 ? (
-              <ChartState loading={salesQuery.loading} error={salesQuery.error} empty={salesData.length === 0} />
+              <ChartState
+                loading={salesQuery.loading}
+                error={salesQuery.error}
+                empty={salesData.length === 0}
+              />
             ) : (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -167,7 +190,12 @@ export default function DashboardPage() {
                         <stop offset="100%" stopColor={chartPalette[2]} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={colors.border} opacity={0.6} />
+                    <CartesianGrid
+                      vertical={false}
+                      strokeDasharray="3 3"
+                      stroke={colors.border}
+                      opacity={0.6}
+                    />
                     <XAxis
                       dataKey="day"
                       tickLine={false}
@@ -269,7 +297,10 @@ export default function DashboardPage() {
                   {paymentSlices.map((p) => (
                     <div key={p.name} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ background: p.color }}
+                        />
                         <span>{p.name}</span>
                       </div>
                       <span className="font-medium">
@@ -305,7 +336,11 @@ export default function DashboardPage() {
               <div className="h-64">
                 <ResponsiveContainer>
                   <BarChart data={topProducts} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke={colors.border} />
+                    <CartesianGrid
+                      horizontal={false}
+                      strokeDasharray="3 3"
+                      stroke={colors.border}
+                    />
                     <XAxis
                       type="number"
                       tickLine={false}
@@ -324,7 +359,12 @@ export default function DashboardPage() {
                       width={110}
                     />
                     <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="qty" name="Unit terjual" fill={chartPalette[1]} radius={[0, 6, 6, 0]} />
+                    <Bar
+                      dataKey="qty"
+                      name="Unit terjual"
+                      fill={chartPalette[1]}
+                      radius={[0, 6, 6, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -401,13 +441,18 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <p className="font-mono text-sm font-medium">{t.code}</p>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums">{formatIDR(t.total)}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {formatIDR(t.total)}
+                        </span>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
                         <p className="text-xs text-muted">
-                          {sourceLabel[t.source] ?? t.source} · {methodLabel[t.paymentMethod] ?? t.paymentMethod}
+                          {sourceLabel[t.source] ?? t.source} ·{" "}
+                          {methodLabel[t.paymentMethod] ?? t.paymentMethod}
                         </p>
-                        <span className="shrink-0 text-xs text-muted">{formatDateTime(t.createdAt)}</span>
+                        <span className="shrink-0 text-xs text-muted">
+                          {formatDateTime(t.createdAt)}
+                        </span>
                       </div>
                     </div>
                   </div>

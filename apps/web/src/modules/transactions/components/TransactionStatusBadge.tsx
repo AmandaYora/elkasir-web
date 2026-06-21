@@ -1,7 +1,10 @@
 import { Badge } from "@/shared/components/ui/badge";
 
 // Module-owned badge: maps a domain transaction status to a generic badge tone.
-const TONE: Record<string, { tone: "neutral" | "primary" | "success" | "warning" | "danger"; label: string }> = {
+const TONE: Record<
+  string,
+  { tone: "neutral" | "primary" | "success" | "warning" | "danger"; label: string }
+> = {
   completed: { tone: "success", label: "Selesai" },
   pending: { tone: "warning", label: "Menunggu" },
   voided: { tone: "danger", label: "Dibatalkan" },

@@ -10,5 +10,9 @@ export function StaffRoleBadge({ role }: { role: StaffRole }) {
 
 // Module-owned badge: maps a domain active status to a generic badge tone.
 export function StaffStatusBadge({ status }: { status: ActiveStatus }) {
-  return status === "active" ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Nonaktif</Badge>;
+  return status === "active" ? (
+    <Badge tone="success">Aktif</Badge>
+  ) : (
+    <Badge tone="neutral">Nonaktif</Badge>
+  );
 }

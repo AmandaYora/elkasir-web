@@ -6,7 +6,14 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/shared/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
 import { Drawer } from "@/shared/components/ui/drawer";
@@ -171,7 +178,11 @@ export default function ProductsPage() {
                     <TableCell className="text-sm">{p.category || "—"}</TableCell>
                     <TableCell className="text-right font-medium">{formatIDR(p.price)}</TableCell>
                     <TableCell className="text-right">
-                      <span className={p.stock === 0 ? "text-danger" : p.stock < 10 ? "text-warning" : ""}>
+                      <span
+                        className={
+                          p.stock === 0 ? "text-danger" : p.stock < 10 ? "text-warning" : ""
+                        }
+                      >
                         {p.stock}
                       </span>
                     </TableCell>
@@ -218,7 +229,12 @@ export default function ProductsPage() {
       </Card>
 
       {/* Detail drawer */}
-      <Drawer open={!!detail} onClose={() => setDetail(null)} title={detail?.name} description={detail?.sku}>
+      <Drawer
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail?.name}
+        description={detail?.sku}
+      >
         {detail && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-3">
@@ -371,18 +387,31 @@ function ProductForm({
     <div className="grid gap-4">
       <div className="grid gap-2">
         <Label>Nama produk</Label>
-        <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nasi Ayam" />
+        <Input
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Nasi Ayam"
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
           <Label>SKU</Label>
-          <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="SKU-1234" />
+          <Input
+            value={form.sku}
+            onChange={(e) => setForm({ ...form, sku: e.target.value })}
+            placeholder="SKU-1234"
+          />
         </div>
         <div className="grid gap-2">
           <Label>Kategori</Label>
           <Select
             value={form.categoryId ?? "none"}
-            onChange={(e) => setForm({ ...form, categoryId: e.target.value === "none" ? undefined : e.target.value })}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                categoryId: e.target.value === "none" ? undefined : e.target.value,
+              })
+            }
           >
             <option value="none">Tanpa kategori</option>
             {categories.map((c) => (
@@ -396,20 +425,35 @@ function ProductForm({
       <div className="grid grid-cols-3 gap-3">
         <div className="grid gap-2">
           <Label>Harga</Label>
-          <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: +e.target.value })} />
+          <Input
+            type="number"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: +e.target.value })}
+          />
         </div>
         <div className="grid gap-2">
           <Label>Modal</Label>
-          <Input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: +e.target.value })} />
+          <Input
+            type="number"
+            value={form.cost}
+            onChange={(e) => setForm({ ...form, cost: +e.target.value })}
+          />
         </div>
         <div className="grid gap-2">
           <Label>Stok</Label>
-          <Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: +e.target.value })} />
+          <Input
+            type="number"
+            value={form.stock}
+            onChange={(e) => setForm({ ...form, stock: +e.target.value })}
+          />
         </div>
       </div>
       <div className="grid gap-2">
         <Label>Status</Label>
-        <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProductStatus })}>
+        <Select
+          value={form.status}
+          onChange={(e) => setForm({ ...form, status: e.target.value as ProductStatus })}
+        >
           <option value="active">Aktif</option>
           <option value="inactive">Nonaktif</option>
         </Select>
