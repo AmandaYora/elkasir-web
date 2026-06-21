@@ -35,7 +35,8 @@ API base path is **`/api/v1`**. Backend listens on `:8081`; web dev on `:8080`.
 
 ## Deployment — LIVE — build in CI, run on server
 
-**Live at http://103.189.235.79** (deployed 2026-06-21). Production deploy is
+**Live at https://elkasir.elcodelabs.com** (deployed 2026-06-21; TLS via Let's Encrypt /
+certbot; bare IP `http://103.189.235.79` still serves over HTTP). Production deploy is
 **build-in-CI → GHCR → server pulls the image**. The VPS (2 GB RAM) **never compiles** — it
 only pulls and runs. Full runbook + the exact live state (VPS facts, paths, what's
 provisioned): **[docs/DEPLOYMENT_PIPELINE.md](docs/DEPLOYMENT_PIPELINE.md)**; basics in
@@ -56,9 +57,10 @@ Rollback = same command with an older sha. That's it — nothing else to discove
   `HEALTHCHECK` calls `/app/api healthcheck`.
 - **One container = the whole monorepo** (SPA embedded in the Go binary). **MySQL stays at
   host/OS level** (never a container); the container reaches it via `host.docker.internal`.
-- **Host topology**: nginx (host) reverse-proxies `:80` → `127.0.0.1:8081` (TLS pending a
-  domain — bare IP now); UFW opens `22/80/443` and `3306` only from the docker subnet
-  (`172.16.0.0/12`, never public). **No IPv6 on this host** (no `listen [::]:80` in nginx).
+- **Host topology**: nginx (host) reverse-proxies `elkasir.elcodelabs.com` `:443` (TLS,
+  certbot auto-renew) and `:80`→`:443` redirect → `127.0.0.1:8081`; UFW opens `22/80/443` and
+  `3306` only from the docker subnet (`172.16.0.0/12`, never public). **No IPv6 on this host**
+  (no `listen [::]:80`; the domain's AAAA was removed).
 - **Secrets** live only in `~/elkasir/.env` on the server (chmod 600) — never committed; the
   image holds no secrets (injected at runtime via `env_file`). GHCR pull creds are cached in
   the server's `~/.docker/config.json` (a `read:packages` PAT) — already logged in.

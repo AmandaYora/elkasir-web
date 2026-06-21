@@ -1,6 +1,6 @@
 # Elkasir — Production Deploy Pipeline (CI → GHCR → server pull)
 
-> **Status: IMPLEMENTED & LIVE — http://103.189.235.79** (first deployed 2026-06-21).
+> **Status: IMPLEMENTED & LIVE — https://elkasir.elcodelabs.com** (first deployed 2026-06-21; TLS via certbot).
 > The pipeline below is wired and in use. For local dev & build-on-machine basics, see
 > [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
@@ -26,14 +26,14 @@ Nothing else needs discovering — everything below is the "why" and the one-tim
 
 | Thing | Value |
 |---|---|
-| Public URL | **http://103.189.235.79** (HTTP only — no domain/TLS yet) |
+| Public URL | **https://elkasir.elcodelabs.com** (Let's Encrypt/certbot, auto-renew, `:80`→`:443` redirect). Bare IP `http://103.189.235.79` still serves HTTP. |
 | VPS | idcloudhost, host `Septi`, user `dimasprasetio`, ~1.9 GB RAM + 1 GB swap (**never build here**) |
 | SSH | `ssh dimasprasetio@103.189.235.79` (key `~/.ssh/elkasir_vps_ed25519` on the dev box) |
 | Image | `ghcr.io/amandayora/elkasir-web:<full-git-sha>` (+ `:latest`); GHCR login cached on VPS (`read:packages` PAT) |
 | App | one container `elkasir-app` on `127.0.0.1:8081` (SPA + `/api/v1`), `restart: unless-stopped`, healthcheck via `/app/api healthcheck` |
 | Binary roles | `<none>`=serve · `migrate up\|down [n]` · `seed` · `healthcheck` (migrations `go:embed`-ed) |
 | DB | host MySQL 8, db `elkasir_db`, user `elkasir_user` (from docker subnet / `%`); container reaches it via `host.docker.internal`. **Not granted from `localhost`** — host-side `mysql -u elkasir_user -h127.0.0.1` is denied on purpose, not a bug. |
-| nginx | `/etc/nginx/sites-available/elkasir` → `:80` → `127.0.0.1:8081` (no IPv6 on this host) |
+| nginx | `/etc/nginx/sites-available/elkasir`: `server_name elkasir.elcodelabs.com` + `:443` TLS (certbot) + `:80`→`:443` redirect → `127.0.0.1:8081`. Still `default_server` for the bare IP. No IPv6 on this host. |
 | Server files | `~/elkasir/{.env (chmod600), .db_password, docker-compose.prod.yml, deploy.sh, DEPLOY_NEXT_STEPS.md}` (repo copies in `infra/deploy/`) |
 | Seeded admin | `admin` / `admin123` — **change after first login** |
 
@@ -41,8 +41,9 @@ Nothing else needs discovering — everything below is the "why" and the one-tim
 > `/opt/elcodelabs/SERVER_PLAYBOOK.md` on the server (linked at `~/SERVER_PLAYBOOK.md`, with a
 > `~/AGENTS.md` pointer). It holds the **app registry** (port/DB-user/image per app) and the
 > "add a new app" recipe. **Before deploying another app on this box, read that playbook.**
-> Note: elkasir holds nginx's `:80` `default_server` (no domain yet) — a new app must use its
-> own `server_name <domain>`, never a second `default_server`. Next free port: `8082`.
+> Note: elkasir serves `elkasir.elcodelabs.com` (TLS) but still keeps nginx's `:80`
+> `default_server` for the bare IP — a new app must use its **own** `server_name <domain>`,
+> never a second `default_server`. Next free port: `8082`.
 
 ---
 
