@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Save } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -66,15 +72,17 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-5 p-4">
       <div>
         <h1 className="text-lg font-semibold">Pengaturan</h1>
-        <p className="text-sm text-muted">Atur pajak, biaya layanan, fitur, dan ambang kontrol toko.</p>
+        <p className="text-sm text-muted">
+          Atur pajak, biaya layanan, fitur, dan ambang kontrol toko.
+        </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Pajak & Layanan</CardTitle>
           <CardDescription>
-            Biaya layanan (termasuk biaya payment gateway untuk QRIS) dan PPN tampil sebagai
-            rincian terpisah ke pelanggan.
+            Biaya layanan (termasuk biaya payment gateway untuk QRIS) dan PPN tampil sebagai rincian
+            terpisah ke pelanggan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -126,7 +134,10 @@ export default function SettingsPage() {
             <span className="text-sm font-medium">Self-order pelanggan (QR meja)</span>
           </label>
           <label className="flex items-center gap-3">
-            <Checkbox checked={form.featureQris} onChange={(e) => set("featureQris", e.target.checked)} />
+            <Checkbox
+              checked={form.featureQris}
+              onChange={(e) => set("featureQris", e.target.checked)}
+            />
             <span className="text-sm font-medium">Pembayaran QRIS</span>
           </label>
         </CardContent>
