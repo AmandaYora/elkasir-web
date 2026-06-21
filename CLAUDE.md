@@ -33,26 +33,38 @@ API base path is **`/api/v1`**. Backend listens on `:8081`; web dev on `:8080`.
 - **Multi-tenant**: every row is scoped by `store_id`, taken from the authenticated principal — never from the request body.
 - **Frontend**: feature code lives in `apps/web/src/modules/<module>/` (pages/components/services/schemas/stores/hooks/types). Generic UI in `src/shared/`. All HTTP goes through `src/shared/services/http-client.ts` (Axios). Theme colors are centralized in `src/theme/`.
 
-## Deployment (locked) — build in CI, run on server
+## Deployment — LIVE — build in CI, run on server
 
-Production deploy is **build-in-CI → GHCR → server pulls the image**. The VPS (2 GB RAM)
-**never compiles** — it only pulls and runs. Full runbook:
-[docs/DEPLOYMENT_PIPELINE.md](docs/DEPLOYMENT_PIPELINE.md); basics in
+**Live at http://103.189.235.79** (deployed 2026-06-21). Production deploy is
+**build-in-CI → GHCR → server pulls the image**. The VPS (2 GB RAM) **never compiles** — it
+only pulls and runs. Full runbook + the exact live state (VPS facts, paths, what's
+provisioned): **[docs/DEPLOYMENT_PIPELINE.md](docs/DEPLOYMENT_PIPELINE.md)**; basics in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-- **Flow**: push `main` → **GitHub Actions builds the image** → pushes to **GHCR (private)**
-  (`ghcr.io/amandayora/elkasir-web:<git-sha>`) → server **pulls** and runs it. Deploy &
-  rollback are by image tag (`<git-sha>`), never a rebuild on the server.
+**Fast path to ship a change:** push to `main` → wait for CI green (the `image` job pushes
+`ghcr.io/amandayora/elkasir-web:<git-sha>`) → on the VPS run `~/elkasir/deploy.sh <full-git-sha>`.
+Rollback = same command with an older sha. That's it — nothing else to discover.
+
+- **Flow**: push `main` → **`ci.yml` builds the image** (the `image` job, gated by
+  `needs:[api,contract,web]`, push-to-main only) → pushes to **GHCR**
+  (`ghcr.io/amandayora/elkasir-web:{latest,<git-sha>}`) → server **pulls** and runs it. Deploy
+  & rollback are by image tag (`<full-git-sha>`), never a rebuild on the server. *(There is no
+  separate `deploy.yml` — the build/push lives inside `ci.yml`.)*
+- **One binary, four roles** (`apps/api/cmd/api`): `<none>`=serve · `migrate up|down [n]` ·
+  `seed` · `healthcheck`. Migrations are `go:embed`-ed and run via golang-migrate-as-library,
+  so the **same image** serves + migrates + seeds (distroless, no shell). The Dockerfile
+  `HEALTHCHECK` calls `/app/api healthcheck`.
 - **One container = the whole monorepo** (SPA embedded in the Go binary). **MySQL stays at
   host/OS level** (never a container); the container reaches it via `host.docker.internal`.
-- **Host topology**: nginx (host) reverse-proxies `:80/:443` → `127.0.0.1:8081`; UFW opens
-  `22/80/443` and `3306` only from the docker subnet (`172.16.0.0/12`, never public).
+- **Host topology**: nginx (host) reverse-proxies `:80` → `127.0.0.1:8081` (TLS pending a
+  domain — bare IP now); UFW opens `22/80/443` and `3306` only from the docker subnet
+  (`172.16.0.0/12`, never public). **No IPv6 on this host** (no `listen [::]:80` in nginx).
 - **Secrets** live only in `~/elkasir/.env` on the server (chmod 600) — never committed; the
-  image holds no secrets (injected at runtime via `env_file`).
-- **Migrations never run on container boot** (runtime is distroless, no shell): run via a
-  `migrate` (plus `seed`/`healthcheck`) **subcommand on the binary** — one image serves +
-  migrates. Migrations are **forward-only**; keep them backward-compatible (expand→contract).
-- **Gate**: `ci.yml` (vet/test/build, runs on `main`) must be green before an image is built/deployed.
+  image holds no secrets (injected at runtime via `env_file`). GHCR pull creds are cached in
+  the server's `~/.docker/config.json` (a `read:packages` PAT) — already logged in.
+- **Migrations are forward-only**; keep them backward-compatible (expand→contract) so an older
+  image still runs after a rollback.
+- **Gate**: `ci.yml` (api/contract/web) must be green before the `image` job runs.
 - **Don't**: build on the VPS, dockerize MySQL, expose `3306` publicly, push to `main`
   without CI green, or bake `.env` into the image.
 

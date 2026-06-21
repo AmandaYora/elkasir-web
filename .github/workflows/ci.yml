@@ -3,6 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    # Docs-only pushes don't change the image — skip the build (faster, cheaper).
+    # A push that also touches code still runs (paths-ignore only skips if ALL match).
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "knowledge/**"
   pull_request:
   workflow_dispatch: # allow manual image rebuilds without a new commit
 

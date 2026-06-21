@@ -1,8 +1,43 @@
 # Elkasir — Production Deploy Pipeline (CI → GHCR → server pull)
 
-> **Status: design/blueprint.** This documents the *agreed* deploy flow (Option A).
-> Not all of it is wired up yet — it's the standard to implement and follow.
-> For local dev & the build-on-machine basics, see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+> **Status: IMPLEMENTED & LIVE — http://103.189.235.79** (first deployed 2026-06-21).
+> The pipeline below is wired and in use. For local dev & build-on-machine basics, see
+> [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+## ⚡ Quick deploy (the version you'll use 99% of the time)
+
+```bash
+# 1. ship code: push to main, wait for CI green (the `image` job pushes the image)
+git push origin main
+#    -> ci.yml runs api/contract/web, then builds & pushes
+#       ghcr.io/amandayora/elkasir-web:{latest,<full-git-sha>}
+
+# 2. deploy on the VPS (already logged in to GHCR; .env + files already there)
+ssh dimasprasetio@103.189.235.79
+cd ~/elkasir && ./deploy.sh <full-git-sha>     # pull -> migrate up -> up -> verify /readyz
+#    rollback = ./deploy.sh <older-full-git-sha>   (migrations are forward-only)
+```
+
+Nothing else needs discovering — everything below is the "why" and the one-time setup
+(already done). `<full-git-sha>` is the 40-char commit SHA (the image tag); get it with
+`git rev-parse HEAD`.
+
+## 📍 Live state (what exists right now)
+
+| Thing | Value |
+|---|---|
+| Public URL | **http://103.189.235.79** (HTTP only — no domain/TLS yet) |
+| VPS | idcloudhost, host `Septi`, user `dimasprasetio`, ~1.9 GB RAM + 1 GB swap (**never build here**) |
+| SSH | `ssh dimasprasetio@103.189.235.79` (key `~/.ssh/elkasir_vps_ed25519` on the dev box) |
+| Image | `ghcr.io/amandayora/elkasir-web:<full-git-sha>` (+ `:latest`); GHCR login cached on VPS (`read:packages` PAT) |
+| App | one container `elkasir-app` on `127.0.0.1:8081` (SPA + `/api/v1`), `restart: unless-stopped`, healthcheck via `/app/api healthcheck` |
+| Binary roles | `<none>`=serve · `migrate up\|down [n]` · `seed` · `healthcheck` (migrations `go:embed`-ed) |
+| DB | host MySQL 8, db `elkasir_db`, user `elkasir_user` (from docker subnet / `%`); container reaches it via `host.docker.internal`. **Not granted from `localhost`** — host-side `mysql -u elkasir_user -h127.0.0.1` is denied on purpose, not a bug. |
+| nginx | `/etc/nginx/sites-available/elkasir` → `:80` → `127.0.0.1:8081` (no IPv6 on this host) |
+| Server files | `~/elkasir/{.env (chmod600), .db_password, docker-compose.prod.yml, deploy.sh, DEPLOY_NEXT_STEPS.md}` (repo copies in `infra/deploy/`) |
+| Seeded admin | `admin` / `admin123` — **change after first login** |
+
+---
 
 ## 0. TL;DR — the golden rule
 
@@ -65,8 +100,11 @@ the **server pulls a ready-made image**, not source code to build.
 > `DB_DSN=...&allowPublicKeyRetrieval=true` in `~/elkasir/.env`. Verified: a plaintext container
 > connection (mirroring the Go driver) authenticates and sees only `elkasir_db`.
 
-Remaining work: **CI to build/push the image** + **server files to pull/run** +
-**migration/seed/healthcheck subcommands** (§6/§9) + **nginx TLS** (§10).
+✅ **All core wiring is now DONE** (2026-06-21): the image build/push (`image` job in
+`ci.yml`), the server files (`~/elkasir/{docker-compose.prod.yml,deploy.sh}`), and the
+`migrate`/`seed`/`healthcheck` subcommands are all implemented and used in the live deploy.
+**Still open (optional, not blocking):** nginx **TLS** (§10 — needs a domain; currently HTTP
+on a bare IP) and nightly **backups** (§11).
 
 ---
 
@@ -93,8 +131,14 @@ second image is needed**.
 `.github/workflows/ci.yml` already runs on `push: [main]` + all PRs: Go `vet/build/test`,
 OpenAPI↔TS sync check, and web `lint/build`. **This must stay green** — it is the gate.
 
-### 4b. Build & push image (`.github/workflows/deploy.yml`)
-On push to `main`, after/with CI: build & push the app image to GHCR.
+### 4b. Build & push image — IMPLEMENTED as the `image` job inside `ci.yml`
+> ✅ **Reality:** this was implemented as a gated `image` job **in `ci.yml`** (not a separate
+> `deploy.yml`): `needs: [api, contract, web]`, `if: push && ref == refs/heads/main`,
+> `permissions: packages: write`, pushing `:latest` + `:${{ github.sha }}` with gha cache.
+> `workflow_dispatch` is enabled for manual rebuilds. The YAML below is the original sketch,
+> kept for reference.
+
+On push to `main`, after the CI gates pass: build & push the app image to GHCR.
 
 ```yaml
 name: build-and-push
@@ -280,7 +324,12 @@ Prefer a **manual** `deploy.sh` run first (a human gate); enable auto-deploy onc
 
 ## 9. Binary subcommands (the single-artifact enabler)
 
-Because the runtime is distroless, teach `cmd/api` to branch on `argv[1]` so the one image
+> ✅ **Implemented.** `cmd/api` branches on `argv[1]`; migrations are `go:embed`-ed
+> (`apps/api/db/migrations/embed.go`) and run via golang-migrate-as-library
+> (`internal/platform/migrator`); seed logic is shared in `internal/platform/bootstrap`. The
+> migrate image (§6 interim) is **not** used.
+
+Because the runtime is distroless, `cmd/api` branches on `argv[1]` so the one image
 is self-sufficient:
 
 | Command | Does |
@@ -351,18 +400,21 @@ anti-over-engineering rules); add one only if traffic justifies it.
 
 ---
 
-## 13. First-deploy checklist (when you say "go")
+## 13. First-deploy checklist — status
 
-1. Implement §9 subcommands (`migrate`/`seed`/`healthcheck`) — or use the §6 interim image.
-2. Add `.github/workflows/deploy.yml`; ensure `ci.yml` is green on `main`.
-3. Push to `main` → confirm Actions built & pushed the image to GHCR (private).
-4. On the server: `docker login ghcr.io` (read-only PAT).
-5. Copy `docker-compose.prod.yml` + `deploy.sh` to `~/elkasir/` (`chmod +x deploy.sh`).
-6. `~/elkasir/deploy.sh <git-sha>` → migrations run, app starts, `/readyz` OK.
-7. One-time: `/app/api seed`, then log in and change the admin password.
-8. Add the nginx site + TLS (§10).
-9. Enable nightly backups + verify a restore (§11).
-10. (Optional) turn on push-to-deploy (§8).
+- [x] §9 subcommands (`migrate`/`seed`/`healthcheck`) implemented (one self-sufficient image).
+- [x] Image build/push wired (the `image` job in `ci.yml`); `ci.yml` green on `main`.
+- [x] Push to `main` → Actions built & pushed the image to GHCR.
+- [x] On the server: `docker login ghcr.io` (cached `read:packages` PAT).
+- [x] `docker-compose.prod.yml` + `deploy.sh` copied to `~/elkasir/` (`chmod +x`).
+- [x] `~/elkasir/deploy.sh <full-git-sha>` → migrations ran, app started, `/readyz` OK.
+- [x] One-time `seed` (admin `admin`/`admin123`). ⚠️ **change the admin password** (still default).
+- [x] nginx site added (`:80` → `127.0.0.1:8081`). ⬜ **TLS** still pending (needs a domain, §10).
+- [ ] Nightly backups + restore test (§11).
+- [ ] (Optional) push-to-deploy over SSH (§8).
+
+**The "deploy again" path is now just §0 Quick deploy** — push to `main`, then
+`~/elkasir/deploy.sh <full-git-sha>` on the VPS.
 
 ---
 
