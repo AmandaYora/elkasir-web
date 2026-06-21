@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Builds / outputs
+dist/
+dist-ssr/
+.output/
+build/
+apps/api/bin/
+apps/api/tmp/
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# The SPA is embedded into the Go binary: the built output (index.html + assets) is
+# ignored, but a committed placeholder index.html keeps `go build` working before a
+# web build. (Negate the dir first because the global `dist/` rule above ignores it.)
+!/apps/api/internal/webui/dist/
+/apps/api/internal/webui/dist/index.html
+/apps/api/internal/webui/dist/assets/
+
+# Env & secrets (never commit) — *.env.example are the documented stand-ins
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Generated contract client is committed on purpose (kept tracked explicitly).

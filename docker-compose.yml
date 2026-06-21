@@ -1,0 +1,39 @@
+# Default deployment: ONE app container (web + API in a single embedded binary).
+# MySQL runs at HOST/OS level (not a container) — one MySQL can serve many databases.
+#
+#   docker compose up -d --build
+#
+# Host MySQL prerequisites: bind-address must include 127.0.0.1 + the docker bridge
+# (e.g. 172.17.0.1); the DB user must be allowed from the docker subnet (e.g. '172.%').
+services:
+  app:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile
+    image: elkasir-app:latest
+    container_name: elkasir-app
+    restart: unless-stopped
+    # Reach the host MySQL from inside the container (Docker 20.10+).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      API_ENV: production
+      API_ADDR: ":8081"
+      # MySQL is on the HOST (reached via host.docker.internal).
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      DB_USERNAME: ${DB_USERNAME:-elkasir}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      DB_NAME: ${DB_NAME:-elkasir_db}
+      JWT_SECRET: ${JWT_SECRET:?required}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+      # Web is served same-origin by this binary → CORS usually not needed.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY:-}
+      XENDIT_WEBHOOK_TOKEN: ${XENDIT_WEBHOOK_TOKEN:-}
+      XENDIT_BASE_URL: ${XENDIT_BASE_URL:-https://api.xendit.co}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8081}
+    # Listen on localhost only; a host reverse proxy (Caddy/nginx) exposes it + TLS.
+    ports:
+      - "127.0.0.1:8081:8081"

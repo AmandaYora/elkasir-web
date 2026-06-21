@@ -1,0 +1,18 @@
+# Air — live reload for the Go backend (the locked dev watcher; never `go run` as the
+# default dev workflow). Run from the repo root via:  npm run dev:api
+# Install once:  go install github.com/air-verse/air@latest
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/main.exe ./cmd/api"
+bin = "./tmp/main.exe"
+include_ext = ["go", "tpl", "tmpl", "html", "sql"]
+exclude_dir = ["tmp", "bin", "vendor", "node_modules", "db/migrations", "internal/webui/dist"]
+delay = 300
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true

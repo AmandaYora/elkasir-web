@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS webhook_events;
+DROP TABLE IF EXISTS idempotency_keys;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS staff;
+DROP TABLE IF EXISTS admin_users;
+DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS stores;

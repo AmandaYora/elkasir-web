@@ -1,0 +1,29 @@
+{
+  "name": "elkasir",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Elkasir monorepo (POS F&B) — apps/web (React 19 + Tailwind 4) + apps/api (Go modular monolith) + packages/api-contract (OpenAPI) + packages/shared. No Turborepo, no TanStack.",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @elkasir/web",
+    "dev:api": "cd apps/api && air",
+    "build:web": "npm run build -w @elkasir/web",
+    "build:api": "cd apps/api && go build -o bin/api ./cmd/api",
+    "build": "npm run build:web && node scripts/embed-web.mjs && npm run build:api",
+    "db:seed": "cd apps/api && go run ./cmd/seed",
+    "migrate:up": "node scripts/migrate.mjs up",
+    "migrate:down": "node scripts/migrate.mjs down 1",
+    "migrate:create": "node scripts/migrate.mjs create",
+    "sqlc:generate": "cd apps/api && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0 generate",
+    "gen:contract": "npm run gen -w @elkasir/api-contract",
+    "gen": "npm run sqlc:generate && npm run gen:contract",
+    "lint:web": "npm run lint -w @elkasir/web",
+    "lint:api": "cd apps/api && go vet ./...",
+    "docker:build": "docker build -t elkasir-app:latest -f infra/docker/Dockerfile .",
+    "docker:up": "docker compose up -d --build"
+  },
+  "packageManager": "npm@10.9.2"
+}

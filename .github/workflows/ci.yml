@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: API (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: apps/api/go.sum
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./...
+
+  contract:
+    name: Contract (OpenAPI → TS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/api-contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Ensure the committed client is in sync with the spec.
+      - run: |
+          npx -y openapi-typescript@7 openapi.yaml -o generated/ts/schema.d.ts
+          git diff --exit-code generated/ts/schema.d.ts
+
+  web:
+    name: Web (Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # npm workspaces: lockfile & install at root, run scripts per workspace.
+      - run: npm ci
+      - run: npm run lint -w @elkasir/web
+      - run: npm run build -w @elkasir/web

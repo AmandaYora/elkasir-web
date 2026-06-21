@@ -1,0 +1,52 @@
+# CLAUDE.md — Elkasir AI Gateway
+
+Elkasir is a **multi-tenant POS for F&B**. One Go API serves a **React 19 web admin** dashboard and **customer self-order** pages; a separate Flutter app (`elkasir_pos`, not in this repo) is the cashier POS. This file is a concise gateway — **read the relevant `knowledge/` file before changing code.**
+
+## Stack (locked)
+
+- **Backend** `apps/api`: Go modular monolith — go-chi, MySQL via **sqlc + golang-migrate + database/sql** (no GORM), ULID ids, JWT auth.
+- **Frontend** `apps/web`: **React 19 + Tailwind 4**, **react-router-dom** (lazy routes), **Zustand**, **Zod**, **Axios**, `@/*` alias. **No TanStack. No Turborepo.**
+- **Packages**: `packages/api-contract` (OpenAPI → TS), `packages/shared` (domain-agnostic TS).
+- **Deploy**: ONE container — SPA built statically and **embedded into the Go binary**; one process serves the SPA (root) + API (`/api/v1`). **MySQL runs at host/OS level**, never a DB container by default.
+
+## Commands (run from repo root, web & api separately)
+
+```bash
+npm install                # install JS workspaces
+npm run dev:api            # backend with Air live-reload (needs: go install github.com/air-verse/air@latest)
+npm run dev:web            # frontend (Vite :8080)
+npm run migrate:up         # apply DB migrations (golang-migrate)
+npm run migrate:create -- <name>
+npm run db:seed            # seed demo data
+npm run sqlc:generate      # regenerate type-safe DB access
+npm run gen:contract       # regenerate OpenAPI TS client
+npm run build              # build web → embed into Go binary → build apps/api/bin/api (one container)
+npm run docker:build && npm run docker:up   # one app container + host MySQL
+```
+
+API base path is **`/api/v1`**. Backend listens on `:8081`; web dev on `:8080`.
+
+## Critical architecture rules
+
+- **Modular monolith.** Each backend module lives under `apps/api/internal/modules/<module>/` with `contracts/`, `application/`, `domain/` (+`events/`), `infrastructure/`, `presentation/`, and a `<module>.module.go` wiring file. Only `contracts/` is public to other modules.
+- **No cross-module** service/repository/domain imports, DB joins, or foreign keys. Cross-module relations are **primitive IDs**; cross-module lookups/flows go through the provider module's contract client (and the Unit-of-Work for atomic flows).
+- **Multi-tenant**: every row is scoped by `store_id`, taken from the authenticated principal — never from the request body.
+- **Frontend**: feature code lives in `apps/web/src/modules/<module>/` (pages/components/services/schemas/stores/hooks/types). Generic UI in `src/shared/`. All HTTP goes through `src/shared/services/http-client.ts` (Axios). Theme colors are centralized in `src/theme/`.
+
+## Knowledge base — read before editing
+
+| Topic | File |
+|---|---|
+| Routing map for the knowledge base | [knowledge/INDEX.md](knowledge/INDEX.md) |
+| What Elkasir is / why | [knowledge/PROJECT_BRIEF.md](knowledge/PROJECT_BRIEF.md) |
+| Features & user stories | [knowledge/PRODUCT_REQUIREMENTS.md](knowledge/PRODUCT_REQUIREMENTS.md) |
+| Architecture, boundaries, data flow | [knowledge/ARCHITECTURE_OVERVIEW.md](knowledge/ARCHITECTURE_OVERVIEW.md) |
+| Each module + its public contract | [knowledge/MODULE_MAP.md](knowledge/MODULE_MAP.md) |
+| Shared terminology | [knowledge/DOMAIN_GLOSSARY.md](knowledge/DOMAIN_GLOSSARY.md) |
+| API conventions (`/api/v1`, envelopes, auth) | [knowledge/API_GUIDE.md](knowledge/API_GUIDE.md) |
+| Tables, ownership, primitive-ID relations | [knowledge/DATABASE_GUIDE.md](knowledge/DATABASE_GUIDE.md) |
+| Backend conventions | [knowledge/BACKEND_GUIDE.md](knowledge/BACKEND_GUIDE.md) |
+| Frontend conventions | [knowledge/FRONTEND_GUIDE.md](knowledge/FRONTEND_GUIDE.md) |
+| Decisions (ADRs) | [knowledge/decisions/](knowledge/decisions/) |
+
+Path-scoped technical rules Claude must follow while editing are in [.claude/rules/](.claude/rules/). Product/architecture docs for humans are in [docs/](docs/).

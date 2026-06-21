@@ -1,0 +1,24 @@
+# Build context = repo root. Don't use a global `**/dist` rule — that would also drop
+# the placeholder index.html in the embed dir. Exclude only specific paths.
+**/node_modules
+.git
+apps/web/.git
+*.log
+
+# Web build output (regenerated in the Docker web stage)
+apps/web/dist
+dist-ssr
+.output
+
+# Local Go artifacts
+apps/api/bin
+apps/api/tmp
+apps/api/api.exe
+
+# Built SPA that may have landed in the embed dir locally — regenerated in the build.
+# placeholder.html is intentionally kept so the embed dir structure exists.
+apps/api/internal/webui/dist/index.html
+apps/api/internal/webui/dist/assets
+
+# Secrets
+**/.env

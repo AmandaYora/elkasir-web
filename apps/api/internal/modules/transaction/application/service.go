@@ -1,0 +1,282 @@
+// Package application holds the transaction module's use cases — the cross-module cashier
+// sale orchestrator.
+package application
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	shareddomain "github.com/elkasir/api/internal/domain"
+	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
+	productclient "github.com/elkasir/api/internal/modules/product/contracts"
+	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
+	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
+	"github.com/elkasir/api/internal/modules/transaction/domain"
+	"github.com/elkasir/api/internal/modules/transaction/infrastructure"
+	"github.com/elkasir/api/internal/platform/db"
+	"github.com/elkasir/api/internal/platform/db/sqlcgen"
+	"github.com/elkasir/api/internal/platform/httpx"
+	"github.com/elkasir/api/internal/platform/uow"
+)
+
+// Service merangkai master-data lintas-modul HANYA lewat contract (productclient,
+// shiftclient, salesclient) + uow untuk atomik. Tidak menyentuh tabel modul lain langsung.
+type Service struct {
+	repo     *infrastructure.Repo
+	products productclient.Client
+	shifts   shiftclient.Client
+	sales    salesclient.Client
+	uow      *uow.Manager
+}
+
+func NewService(repo *infrastructure.Repo, productClient productclient.Client, shiftClient shiftclient.Client, salesClient salesclient.Client, uowMgr *uow.Manager) *Service {
+	return &Service{repo: repo, products: productClient, shifts: shiftClient, sales: salesClient, uow: uowMgr}
+}
+
+type ItemDTO struct {
+	ProductID   string `json:"productId,omitempty"`
+	ProductName string `json:"productName"`
+	Category    string `json:"category"`
+	Price       int64  `json:"price"`
+	Quantity    int32  `json:"quantity"`
+	LineTotal   int64  `json:"lineTotal"`
+	Note        string `json:"note,omitempty"`
+}
+
+type DTO struct {
+	ID             string    `json:"id"`
+	Code           string    `json:"code"`
+	ShiftID        string    `json:"shiftId,omitempty"`
+	TableID        string    `json:"tableId,omitempty"`
+	SelfOrderID    string    `json:"selfOrderId,omitempty"`
+	CashierID      string    `json:"cashierId,omitempty"`
+	OrderType      string    `json:"orderType"`
+	Source         string    `json:"source"`
+	PaymentMethod  string    `json:"paymentMethod"`
+	Status         string    `json:"status"`
+	Subtotal       int64     `json:"subtotal"`
+	Discount       int64     `json:"discount"`
+	Tax            int64     `json:"tax"`
+	Total          int64     `json:"total"`
+	AmountReceived int64     `json:"amountReceived"`
+	ChangeAmount   int64     `json:"changeAmount"`
+	CustomerNote   string    `json:"customerNote,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	Items          []ItemDTO `json:"items"`
+}
+
+type CreateItemInput struct {
+	ProductID string `json:"productId"`
+	Quantity  int32  `json:"quantity"`
+	Note      string `json:"note"`
+}
+
+type CreateInput struct {
+	Items              []CreateItemInput `json:"items"`
+	Discount           int64             `json:"discount"`
+	PaymentMethod      string            `json:"paymentMethod"`
+	AmountReceived     int64             `json:"amountReceived"`
+	TableID            string            `json:"tableId"`
+	OrderType          string            `json:"orderType"`
+	DiscountApprovedBy string            `json:"discountApprovedBy"`
+	CustomerNote       string            `json:"customerNote"`
+}
+
+// Create membuat transaksi kasir (Kondisi 1) atomik & idempoten.
+// Mengembalikan (dto, created). created=false berarti hasil replay idempotency.
+func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey, reqHash string, in CreateInput) (DTO, bool, error) {
+	storeID := p.StoreID
+
+	// Idempotency: kunci sama + body sama → kembalikan hasil lama (tanpa duplikasi).
+	if idemKey != "" {
+		existing, err := s.repo.Idempotency(ctx, storeID, idemKey)
+		switch {
+		case err == nil:
+			if existing.RequestHash != reqHash {
+				return DTO{}, false, httpx.Conflict("Idempotency-Key sudah dipakai untuk permintaan berbeda.")
+			}
+			dto, err := s.getDTO(ctx, storeID, existing.ResponseBody.String)
+			return dto, false, err
+		case errors.Is(err, sql.ErrNoRows):
+			// lanjut buat baru
+		default:
+			return DTO{}, false, err
+		}
+	}
+
+	if len(in.Items) == 0 {
+		return DTO{}, false, httpx.Validation("Pesanan tidak boleh kosong.")
+	}
+	if in.PaymentMethod != "cash" && in.PaymentMethod != "qris" {
+		return DTO{}, false, httpx.Validation("Metode pembayaran harus 'cash' atau 'qris'.")
+	}
+	if in.Discount < 0 {
+		return DTO{}, false, httpx.Validation("Diskon tidak boleh negatif.")
+	}
+
+	// Snapshot harga & kategori dari produk (via productclient) saat penjualan.
+	var items []salesclient.SaleItem
+	var subtotal int64
+	for _, ci := range in.Items {
+		if ci.Quantity <= 0 {
+			return DTO{}, false, httpx.Validation("Kuantitas item harus lebih dari 0.")
+		}
+		pr, err := s.products.GetForSale(ctx, storeID, ci.ProductID)
+		if errors.Is(err, productclient.ErrNotFound) {
+			return DTO{}, false, httpx.Validation("Produk tidak ditemukan: " + ci.ProductID)
+		}
+		if err != nil {
+			return DTO{}, false, err
+		}
+		if !pr.Active {
+			return DTO{}, false, httpx.Validation("Produk nonaktif: " + pr.Name)
+		}
+		lt := pr.Price * int64(ci.Quantity)
+		subtotal += lt
+		items = append(items, salesclient.SaleItem{
+			ProductID: pr.ID, ProductName: pr.Name, Category: pr.Category,
+			Price: pr.Price, Quantity: ci.Quantity, LineTotal: lt, Note: strings.TrimSpace(ci.Note),
+		})
+	}
+
+	// Kebijakan kontrol diskon (di server, bukan klien).
+	policy := s.controlPolicy(ctx, storeID)
+	if policy.DiscountNeedsApproval(subtotal, in.Discount) && strings.TrimSpace(in.DiscountApprovedBy) == "" {
+		return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh persetujuan supervisor (discountApprovedBy).")
+	}
+
+	total := shareddomain.Total(subtotal, in.Discount, 0)
+
+	var amountReceived, change int64
+	if in.PaymentMethod == "cash" {
+		amountReceived = in.AmountReceived
+		ch, err := shareddomain.CashChange(amountReceived, total)
+		if err != nil {
+			return DTO{}, false, httpx.Validation("Uang diterima kurang dari total.")
+		}
+		change = ch
+	} else {
+		amountReceived = total
+	}
+
+	shiftID, err := s.shifts.CurrentOpenID(ctx, storeID)
+	if err != nil {
+		return DTO{}, false, err
+	}
+
+	cashierID := ""
+	if p.Actor == authcontract.ActorStaff {
+		cashierID = p.SubjectID
+	}
+
+	// Atomik lintas-modul: kurangi stok (productclient) + catat penjualan (salesclient)
+	// dalam SATU transaksi DB via uow. Gagal di tengah → seluruhnya rollback.
+	var txID string
+	err = s.uow.Run(ctx, func(ctx context.Context) error {
+		for _, it := range items {
+			if derr := s.products.Decrease(ctx, storeID, it.ProductID, it.Quantity); derr != nil {
+				if errors.Is(derr, productclient.ErrInsufficientStock) {
+					return fmt.Errorf("%w: %s", productclient.ErrInsufficientStock, it.ProductName)
+				}
+				return derr
+			}
+		}
+		newID, rerr := s.sales.RecordSale(ctx, salesclient.RecordSaleInput{
+			StoreID: storeID, Source: "cashier", PaymentMethod: in.PaymentMethod, OrderType: in.OrderType,
+			TableID: strings.TrimSpace(in.TableID), CashierID: cashierID, ShiftID: shiftID,
+			DiscountApprovedBy: strings.TrimSpace(in.DiscountApprovedBy),
+			CustomerNote:       strings.TrimSpace(in.CustomerNote),
+			Items:              items,
+			Subtotal:           subtotal,
+			Discount:           in.Discount,
+			Total:              total,
+			AmountReceived:     amountReceived,
+			Change:             change,
+			IdempotencyKey:     idemKey,
+			RequestHash:        reqHash,
+		})
+		if rerr != nil {
+			return rerr
+		}
+		txID = newID
+		return nil
+	})
+	if errors.Is(err, productclient.ErrInsufficientStock) {
+		return DTO{}, false, httpx.Unprocessable("Stok tidak cukup (" + strings.TrimPrefix(err.Error(), "stok tidak cukup: ") + ").")
+	}
+	if db.IsDuplicate(err) {
+		return DTO{}, false, httpx.Conflict("Transaksi duplikat (retry bersamaan).")
+	}
+	if err != nil {
+		return DTO{}, false, err
+	}
+
+	dto, err := s.getDTO(ctx, storeID, txID)
+	return dto, true, err
+}
+
+func (s *Service) Get(ctx context.Context, storeID, txID string) (DTO, error) {
+	return s.getDTO(ctx, storeID, txID)
+}
+
+func (s *Service) List(ctx context.Context, f domain.ListFilter) ([]DTO, int64, error) {
+	rows, total, err := s.repo.List(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]DTO, 0, len(rows))
+	for _, t := range rows {
+		out = append(out, toDTO(t, nil))
+	}
+	return out, total, nil
+}
+
+func (s *Service) getDTO(ctx context.Context, storeID, txID string) (DTO, error) {
+	t, err := s.repo.Get(ctx, storeID, txID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DTO{}, httpx.NotFound("Transaksi tidak ditemukan.")
+	}
+	if err != nil {
+		return DTO{}, err
+	}
+	items, err := s.repo.Items(ctx, txID)
+	if err != nil {
+		return DTO{}, err
+	}
+	return toDTO(t, items), nil
+}
+
+func (s *Service) controlPolicy(ctx context.Context, storeID string) shareddomain.ControlPolicy {
+	st, err := s.repo.Settings(ctx, storeID)
+	if err != nil {
+		// default aman bila settings belum ada
+		return shareddomain.ControlPolicy{MaxDiscountPercent: 10, MaxOperationalExpense: 200000, CashVarianceTolerance: 5000}
+	}
+	return shareddomain.ControlPolicy{
+		MaxDiscountPercent:    int64(st.MaxDiscountPercent),
+		MaxOperationalExpense: st.MaxOperationalExpense,
+		CashVarianceTolerance: st.CashVarianceTolerance,
+	}
+}
+
+func toDTO(t sqlcgen.Transaction, items []sqlcgen.TransactionItem) DTO {
+	d := DTO{
+		ID: t.ID, Code: t.Code, ShiftID: t.ShiftID.String, TableID: t.TableID.String,
+		SelfOrderID: t.SelfOrderID.String, CashierID: t.CashierID.String,
+		OrderType: string(t.OrderType), Source: string(t.Source), PaymentMethod: string(t.PaymentMethod),
+		Status: string(t.Status), Subtotal: t.Subtotal, Discount: t.Discount, Tax: t.Tax, Total: t.Total,
+		AmountReceived: t.AmountReceived, ChangeAmount: t.ChangeAmount, CustomerNote: t.CustomerNote.String,
+		CreatedAt: t.CreatedAt, Items: []ItemDTO{},
+	}
+	for _, it := range items {
+		d.Items = append(d.Items, ItemDTO{
+			ProductID: it.ProductID.String, ProductName: it.ProductName, Category: it.Category,
+			Price: it.Price, Quantity: it.Quantity, LineTotal: it.LineTotal, Note: it.Note.String,
+		})
+	}
+	return d
+}
