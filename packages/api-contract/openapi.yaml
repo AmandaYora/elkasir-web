@@ -1088,6 +1088,19 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
 
   # ─────────────────────────── Settings ───────────────────────────
+  /pos/pricing:
+    get:
+      tags: [Settings]
+      operationId: getPosPricing
+      summary: Konfigurasi harga untuk POS (layanan % + PPN) — admin atau staf
+      responses:
+        "200":
+          description: Konfigurasi harga
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PosPricing" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /settings:
     get:
       tags: [Settings]
@@ -1836,6 +1849,14 @@ components:
         serviceLine: { type: integer, format: int64, description: "Layanan = service + gatewayFee." }
         tax: { type: integer, format: int64, description: "PPN" }
         total: { type: integer, format: int64 }
+
+    PosPricing:
+      type: object
+      required: [servicePercent, taxPercent, taxEnabled]
+      properties:
+        servicePercent: { type: integer, format: int32, description: "Biaya layanan %, mis. 2." }
+        taxPercent: { type: integer, format: int32, description: "PPN %, mis. 11." }
+        taxEnabled: { type: boolean }
 
     Settings:
       type: object

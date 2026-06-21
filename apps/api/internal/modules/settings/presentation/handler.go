@@ -1,4 +1,5 @@
-// Package presentation: HTTP handler modul settings — GET (semua admin) & PATCH (owner/admin).
+// Package presentation: HTTP handler modul settings — GET/PATCH /settings (admin) +
+// GET /pos/pricing (read-only, admin ATAU staf) untuk POS menghitung layanan & PPN.
 package presentation
 
 import (
@@ -19,7 +20,7 @@ func NewHandler(svc *application.Service, auth authcontract.Authenticator) *Hand
 	return &Handler{svc: svc, auth: auth}
 }
 
-// Routes mounts /settings (admin-only; write = owner/admin).
+// Routes mounts /settings (admin-only; write = owner/admin) + /pos/pricing (any auth).
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/settings", func(r chi.Router) {
 		r.Use(h.auth.Authenticate)
@@ -31,6 +32,30 @@ func (h *Handler) Routes(r chi.Router) {
 			r.Use(authcontract.RequireRole("owner", "admin"))
 			r.Patch("/", h.update)
 		})
+	})
+
+	// Konfigurasi harga untuk POS (layanan % + PPN). Read-only, boleh diakses staf kasir
+	// (bukan hanya admin) agar app POS menghitung total konsisten dengan server.
+	r.With(h.auth.Authenticate).Get("/pos/pricing", h.posPricing)
+}
+
+// PosPricing adalah subset settings yang dibutuhkan POS untuk menghitung breakdown.
+type PosPricing struct {
+	ServicePercent int32 `json:"servicePercent"`
+	TaxPercent     int32 `json:"taxPercent"`
+	TaxEnabled     bool  `json:"taxEnabled"`
+}
+
+func (h *Handler) posPricing(w http.ResponseWriter, r *http.Request) {
+	dto, err := h.svc.Get(r.Context(), h.storeID(r))
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, PosPricing{
+		ServicePercent: dto.ServicePercent,
+		TaxPercent:     dto.TaxPercent,
+		TaxEnabled:     dto.TaxEnabled,
 	})
 }
 

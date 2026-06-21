@@ -686,6 +686,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pos/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Konfigurasi harga untuk POS (layanan % + PPN) — admin atau staf */
+        get: operations["getPosPricing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -1335,6 +1352,19 @@ export interface components {
             tax: number;
             /** Format: int64 */
             total: number;
+        };
+        PosPricing: {
+            /**
+             * Format: int32
+             * @description Biaya layanan %, mis. 2.
+             */
+            servicePercent: number;
+            /**
+             * Format: int32
+             * @description PPN %, mis. 11.
+             */
+            taxPercent: number;
+            taxEnabled: boolean;
         };
         Settings: {
             /** Format: int32 */
@@ -3070,6 +3100,27 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    getPosPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Konfigurasi harga */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosPricing"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getSettings: {
