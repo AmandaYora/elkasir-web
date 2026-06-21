@@ -153,4 +153,10 @@ export const api = {
     const res = await httpClient.delete<ApiSuccess<T>>(url, withQuery(config));
     return res.data?.data as T;
   },
+  // Multipart upload. Pass a FormData; axios/browser set the multipart boundary
+  // automatically. Use `onUploadProgress` (via config) for a progress bar.
+  async upload<T>(url: string, form: FormData, config?: RequestConfig): Promise<T> {
+    const res = await httpClient.post<ApiSuccess<T>>(url, form, withQuery(config));
+    return res.data?.data as T;
+  },
 };

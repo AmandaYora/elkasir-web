@@ -5,8 +5,8 @@ SELECT * FROM admin_users WHERE store_id = ? ORDER BY created_at DESC;
 SELECT * FROM admin_users WHERE id = ? AND store_id = ? LIMIT 1;
 
 -- name: CreateAdminUser :exec
-INSERT INTO admin_users (id, store_id, name, email, password_hash, role, status)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO admin_users (id, store_id, name, email, username, password_hash, role, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAdminUser :exec
 UPDATE admin_users SET name = ?, email = ?, role = ?, status = ?

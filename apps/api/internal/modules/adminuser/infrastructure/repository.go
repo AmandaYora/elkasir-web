@@ -39,7 +39,7 @@ func (r *Repo) Get(ctx context.Context, storeID, id string) (domain.AdminUser, e
 	return toEntity(row), nil
 }
 
-func (r *Repo) Create(ctx context.Context, storeID, id, email, passwordHash string, in domain.CreateInput) error {
+func (r *Repo) Create(ctx context.Context, storeID, id, email, username, passwordHash string, in domain.CreateInput) error {
 	role, err := parseRole(in.Role)
 	if err != nil {
 		return err
@@ -53,6 +53,7 @@ func (r *Repo) Create(ctx context.Context, storeID, id, email, passwordHash stri
 		StoreID:      storeID,
 		Name:         strings.TrimSpace(in.Name),
 		Email:        email,
+		Username:     sql.NullString{String: username, Valid: username != ""},
 		PasswordHash: passwordHash,
 		Role:         role,
 		Status:       status,
@@ -95,6 +96,7 @@ func toEntity(u sqlcgen.AdminUser) domain.AdminUser {
 		ID:        u.ID,
 		Name:      u.Name,
 		Email:     u.Email,
+		Username:  u.Username.String,
 		Role:      string(u.Role),
 		Status:    string(u.Status),
 		CreatedAt: u.CreatedAt,

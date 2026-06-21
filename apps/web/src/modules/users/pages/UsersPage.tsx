@@ -21,7 +21,11 @@ import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedba
 import { formatDateTime } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { usersService } from "@/modules/users/services/users.service";
-import { adminCreateSchema, adminUpdateSchema } from "@/modules/users/schemas/user.schema";
+import {
+  adminCreateSchema,
+  adminUpdateSchema,
+  passwordSchema,
+} from "@/modules/users/schemas/user.schema";
 import { AdminRoleBadge, AdminStatusBadge } from "@/modules/users/components/AdminRoleBadge";
 import type {
   ActiveStatus,
@@ -34,6 +38,7 @@ import type {
 interface FormState {
   name: string;
   email: string;
+  username: string;
   password: string;
   role: AdminRole;
   status: ActiveStatus;
@@ -42,6 +47,7 @@ interface FormState {
 const emptyForm: FormState = {
   name: "",
   email: "",
+  username: "",
   password: "",
   role: "manager",
   status: "active",
@@ -158,7 +164,9 @@ export default function UsersPage() {
                 <TableRow key={u.id}>
                   <TableCell>
                     <div className="font-medium">{u.name}</div>
-                    <div className="text-xs text-muted">{u.email}</div>
+                    <div className="text-xs text-muted">
+                      {u.username ? `@${u.username} · ${u.email}` : u.email}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <AdminRoleBadge role={u.role} />
@@ -246,6 +254,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
       ? {
           name: editing.name,
           email: editing.email,
+          username: editing.username ?? "",
           password: "",
           role: editing.role,
           status: editing.status,
@@ -269,12 +278,25 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
           toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
           return;
         }
+        // Password baru bersifat opsional saat edit — kosongkan untuk membiarkannya.
+        const newPassword = form.password.trim();
+        if (newPassword) {
+          const pw = passwordSchema.safeParse(newPassword);
+          if (!pw.success) {
+            toast.error(pw.error.issues[0]?.message ?? "Periksa password.");
+            return;
+          }
+        }
         await usersService.update(editing.id, body);
+        if (newPassword) {
+          await usersService.resetPassword(editing.id, newPassword);
+        }
         toast.success("Pengguna berhasil diperbarui");
       } else {
         const body: AdminCreateInput = {
           name: form.name.trim(),
           email: form.email.trim(),
+          username: form.username.trim().toLowerCase(),
           password: form.password,
           role: form.role,
           status: form.status,
@@ -305,26 +327,43 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
           placeholder="mis. Sari Melati"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      {!editing && (
         <div className="grid gap-2">
-          <Label>Email</Label>
+          <Label>Username</Label>
           <Input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="sari@elkasir.id"
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            placeholder="mis. sari"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
+          <p className="text-xs text-muted">
+            Dipakai untuk login (selain email). Huruf kecil, angka, titik, garis bawah, atau strip.
+          </p>
         </div>
-        {!editing && (
-          <div className="grid gap-2">
-            <Label>Password</Label>
-            <Input
-              type="text"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder="mis. admin123"
-            />
-          </div>
+      )}
+      <div className="grid gap-2">
+        <Label>Email</Label>
+        <Input
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          placeholder="sari@elkasir.id"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label>{editing ? "Password baru" : "Password"}</Label>
+        <Input
+          type="text"
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          placeholder={editing ? "Kosongkan jika tidak diubah" : "mis. admin123"}
+        />
+        {editing && (
+          <p className="text-xs text-muted">
+            Isi hanya jika ingin mengganti password pengguna ini.
+          </p>
         )}
       </div>
       <div className="grid gap-2">

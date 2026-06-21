@@ -8,6 +8,7 @@ export const productSchema = z.object({
   cost: z.number().min(0, "Modal tidak boleh negatif"),
   stock: z.number().int().min(0, "Stok tidak boleh negatif"),
   status: z.enum(["active", "inactive"]),
+  imageUrl: z.string().url("URL gambar tidak valid").optional().or(z.literal("")),
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;

@@ -24,6 +24,7 @@ type DTO struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
 	Email        string     `json:"email"`
+	Username     string     `json:"username"`
 	Role         string     `json:"role"`
 	Status       string     `json:"status"`
 	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
@@ -35,6 +36,7 @@ func toDTO(u domain.AdminUser) DTO {
 		ID:           u.ID,
 		Name:         u.Name,
 		Email:        u.Email,
+		Username:     u.Username,
 		Role:         u.Role,
 		Status:       u.Status,
 		LastActiveAt: u.LastActiveAt,
@@ -73,14 +75,18 @@ func (s *Service) Create(ctx context.Context, storeID string, in domain.CreateIn
 	if err != nil {
 		return DTO{}, err
 	}
+	username, err := domain.ValidateUsername(in.Username)
+	if err != nil {
+		return DTO{}, err
+	}
 	hash, err := security.HashPassword(in.Password)
 	if err != nil {
 		return DTO{}, err
 	}
 	uid := id.New()
-	err = s.repo.Create(ctx, storeID, uid, email, hash, in)
+	err = s.repo.Create(ctx, storeID, uid, email, username, hash, in)
 	if db.IsDuplicate(err) {
-		return DTO{}, httpx.Conflict("Email sudah dipakai.")
+		return DTO{}, httpx.Conflict("Email atau username sudah dipakai.")
 	}
 	if err != nil {
 		return DTO{}, err

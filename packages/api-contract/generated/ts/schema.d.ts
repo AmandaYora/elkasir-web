@@ -341,6 +341,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unggah gambar (owner/admin) — kompres tahap-2 lalu simpan ke object storage
+         * @description Menerima satu file gambar (multipart) dan opsi `category` (default "product"). Backend mengompres ulang (resize 1280px, JPEG q82) lalu menyimpannya public-read di elkasir/upload/<category>/<file>. Mengembalikan key & URL publik.
+         */
+        post: operations["uploadMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shifts": {
         parameters: {
             query?: never;
@@ -918,6 +938,8 @@ export interface components {
             id: string;
             name: string;
             email: string;
+            /** @description Login identifier (selain email). Kosong untuk pengguna lama. */
+            username?: string;
             /** @enum {string} */
             role: "owner" | "admin" | "manager" | "viewer";
             /** @enum {string} */
@@ -931,6 +953,8 @@ export interface components {
             name: string;
             /** Format: email */
             email: string;
+            /** @description Dipakai untuk login (selain email). */
+            username: string;
             password: string;
             /** @enum {string} */
             role: "owner" | "admin" | "manager" | "viewer";
@@ -945,6 +969,12 @@ export interface components {
             role: "owner" | "admin" | "manager" | "viewer";
             /** @enum {string} */
             status?: "active" | "inactive";
+        };
+        UploadResult: {
+            /** @description Object key di bucket (mis. elkasir/upload/product/<id>.jpg) */
+            key: string;
+            /** @description URL publik objek */
+            url: string;
         };
         Shift: {
             id: string;
@@ -2244,6 +2274,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    uploadMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description Folder tujuan (a-z0-9_-), default "product". */
+                    category?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Berhasil diunggah */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listShifts: {

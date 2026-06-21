@@ -5,6 +5,7 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
+  username?: string;
   role: AdminRole;
   status: ActiveStatus;
   lastActiveAt?: string;
@@ -14,6 +15,7 @@ export interface AdminUser {
 export interface AdminCreateInput {
   name: string;
   email: string;
+  username: string;
   password: string;
   role: AdminRole;
   status: ActiveStatus;

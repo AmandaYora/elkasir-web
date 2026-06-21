@@ -41,6 +41,7 @@ type Querier interface {
 	ExpireOverdueSelfOrders(ctx context.Context, arg ExpireOverdueSelfOrdersParams) (int64, error)
 	FindTableByCode(ctx context.Context, code string) (DiningTable, error)
 	GetAdminUserByEmail(ctx context.Context, email string) (AdminUser, error)
+	GetAdminUserByEmailOrUsername(ctx context.Context, arg GetAdminUserByEmailOrUsernameParams) (AdminUser, error)
 	GetAdminUserByID(ctx context.Context, id string) (AdminUser, error)
 	GetAdminUserScoped(ctx context.Context, arg GetAdminUserScopedParams) (AdminUser, error)
 	GetCashMovement(ctx context.Context, arg GetCashMovementParams) (CashMovement, error)

@@ -7,11 +7,12 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createAdminUser = `-- name: CreateAdminUser :exec
-INSERT INTO admin_users (id, store_id, name, email, password_hash, role, status)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO admin_users (id, store_id, name, email, username, password_hash, role, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateAdminUserParams struct {
@@ -19,6 +20,7 @@ type CreateAdminUserParams struct {
 	StoreID      string           `json:"storeId"`
 	Name         string           `json:"name"`
 	Email        string           `json:"email"`
+	Username     sql.NullString   `json:"username"`
 	PasswordHash string           `json:"passwordHash"`
 	Role         AdminUsersRole   `json:"role"`
 	Status       AdminUsersStatus `json:"status"`
@@ -30,6 +32,7 @@ func (q *Queries) CreateAdminUser(ctx context.Context, arg CreateAdminUserParams
 		arg.StoreID,
 		arg.Name,
 		arg.Email,
+		arg.Username,
 		arg.PasswordHash,
 		arg.Role,
 		arg.Status,
@@ -52,7 +55,7 @@ func (q *Queries) DeleteAdminUser(ctx context.Context, arg DeleteAdminUserParams
 }
 
 const getAdminUserScoped = `-- name: GetAdminUserScoped :one
-SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at FROM admin_users WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at, username FROM admin_users WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetAdminUserScopedParams struct {
@@ -74,12 +77,13 @@ func (q *Queries) GetAdminUserScoped(ctx context.Context, arg GetAdminUserScoped
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const listAdminUsers = `-- name: ListAdminUsers :many
-SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at FROM admin_users WHERE store_id = ? ORDER BY created_at DESC
+SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at, username FROM admin_users WHERE store_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAdminUsers(ctx context.Context, storeID string) ([]AdminUser, error) {
@@ -102,6 +106,7 @@ func (q *Queries) ListAdminUsers(ctx context.Context, storeID string) ([]AdminUs
 			&i.LastActiveAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Username,
 		); err != nil {
 			return nil, err
 		}

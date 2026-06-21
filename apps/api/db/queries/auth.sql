@@ -1,6 +1,9 @@
 -- name: GetAdminUserByEmail :one
 SELECT * FROM admin_users WHERE email = ? LIMIT 1;
 
+-- name: GetAdminUserByEmailOrUsername :one
+SELECT * FROM admin_users WHERE email = ? OR username = ? LIMIT 1;
+
 -- name: GetAdminUserByID :one
 SELECT * FROM admin_users WHERE id = ? LIMIT 1;
 

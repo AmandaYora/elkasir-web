@@ -149,17 +149,19 @@ let prod; // base product Kopi Uji
   }
 
   // ===================== ADMIN USERS CRUD =====================
-  section('ADMIN-USERS: create(manager), reset-password(+login), dup email, delete');
-  let auId; const mgrEmail = `mgr${TAG}@elk.id`;
+  section('ADMIN-USERS: create(manager), login-by-username, reset-password(+login), dup email, delete');
+  let auId; const mgrEmail = `mgr${TAG}@elk.id`; const mgrUsername = `mgr${TAG}`;
   {
-    const c = await api('/admin-users', { method: 'POST', token: AT, body: { name: 'Manajer Tes', email: mgrEmail, password: 'awal123', role: 'manager', status: 'active' } });
+    const c = await api('/admin-users', { method: 'POST', token: AT, body: { name: 'Manajer Tes', email: mgrEmail, username: mgrUsername, password: 'awal123', role: 'manager', status: 'active' } });
     ok(c.status === 201, 'create admin-user (manager) 201');
     auId = c.json.data.id;
+    const byUsername = await api('/auth/admin/login', { method: 'POST', body: { email: mgrUsername, password: 'awal123' } });
+    ok(byUsername.status === 200, 'admin-user can log in with username');
     const rp = await api(`/admin-users/${auId}/reset-password`, { method: 'POST', token: AT, body: { password: 'baru123' } });
     ok(rp.status === 204 || rp.status === 200, 'admin-user reset-password 204');
     const relog = await api('/auth/admin/login', { method: 'POST', body: { email: mgrEmail, password: 'baru123' } });
     ok(relog.status === 200, 'admin-user can log in with the reset password');
-    const dup = await api('/admin-users', { method: 'POST', token: AT, body: { name: 'd', email: mgrEmail, password: 'awal123', role: 'admin', status: 'active' } });
+    const dup = await api('/admin-users', { method: 'POST', token: AT, body: { name: 'd', email: mgrEmail, username: `${mgrUsername}x`, password: 'awal123', role: 'admin', status: 'active' } });
     ok(dup.status === 409, 'duplicate admin email 409');
   }
   const mgrToken = (await api('/auth/admin/login', { method: 'POST', body: { email: mgrEmail, password: 'baru123' } })).json?.data?.accessToken;

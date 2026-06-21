@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -23,6 +23,8 @@ import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedba
 import { formatIDR } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { productsService } from "@/modules/products/services/products.service";
+import { mediaService } from "@/shared/services/media.service";
+import { DEFAULT_PRODUCT_IMAGE_URL } from "@/shared/lib/image";
 import { productSchema } from "@/modules/products/schemas/product.schema";
 import { ProductStatusBadge } from "@/modules/products/components/ProductStatusBadge";
 import type { Product, ProductInput, ProductStatus } from "@/modules/products/types/product.types";
@@ -171,8 +173,22 @@ export default function ProductsPage() {
                 {paged.map((p) => (
                   <TableRow key={p.id} className="cursor-pointer" onClick={() => setDetail(p)}>
                     <TableCell>
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-muted">Modal {formatIDR(p.cost)}</div>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={p.imageUrl || DEFAULT_PRODUCT_IMAGE_URL}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL)
+                              e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
+                          }}
+                          className="h-10 w-10 shrink-0 rounded-md border border-border object-cover"
+                        />
+                        <div>
+                          <div className="font-medium">{p.name}</div>
+                          <div className="text-xs text-muted">Modal {formatIDR(p.cost)}</div>
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted">{p.sku}</TableCell>
                     <TableCell className="text-sm">{p.category || "—"}</TableCell>
@@ -237,6 +253,15 @@ export default function ProductsPage() {
       >
         {detail && (
           <div className="space-y-5">
+            <img
+              src={detail.imageUrl || DEFAULT_PRODUCT_IMAGE_URL}
+              alt={detail.name}
+              onError={(e) => {
+                if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL)
+                  e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
+              }}
+              className="aspect-video w-full rounded-lg border border-border object-cover"
+            />
             <div className="grid grid-cols-2 gap-3">
               {[
                 ["Kategori", detail.category || "—"],
@@ -361,8 +386,10 @@ function ProductForm({
     cost: editing?.cost ?? 0,
     stock: editing?.stock ?? 0,
     status: (editing?.status as ProductStatus) ?? "active",
+    imageUrl: editing?.imageUrl ?? "",
   });
   const [busy, setBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
 
   const submit = async () => {
     const parsed = productSchema.safeParse(form);
@@ -458,11 +485,97 @@ function ProductForm({
           <option value="inactive">Nonaktif</option>
         </Select>
       </div>
+      <ImageUploadField
+        value={form.imageUrl ?? ""}
+        uploadingChange={setImageBusy}
+        onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
+      />
       <div className="flex justify-end">
-        <Button loading={busy} onClick={submit}>
+        <Button loading={busy} disabled={imageBusy} onClick={submit}>
           {editing ? "Simpan Perubahan" : "Tambah Produk"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function ImageUploadField({
+  value,
+  onChange,
+  uploadingChange,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  uploadingChange: (busy: boolean) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // izinkan memilih file yang sama lagi
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar.");
+      return;
+    }
+    setUploading(true);
+    uploadingChange(true);
+    setProgress(0);
+    try {
+      const res = await mediaService.uploadImage(file, "product", setProgress);
+      onChange(res.url);
+      toast.success("Gambar berhasil diunggah");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal mengunggah gambar");
+    } finally {
+      setUploading(false);
+      uploadingChange(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-2">
+      <Label>Gambar produk</Label>
+      <div className="flex items-center gap-3">
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-muted">
+          <img
+            src={value || DEFAULT_PRODUCT_IMAGE_URL}
+            alt=""
+            onError={(e) => {
+              if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL)
+                e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
+            }}
+            className="h-full w-full object-cover"
+          />
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-medium text-white">
+              {progress}%
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-start gap-1.5">
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            loading={uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5" /> {value ? "Ganti gambar" : "Unggah gambar"}
+          </Button>
+          {value && !uploading && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => onChange("")}>
+              <X className="h-3.5 w-3.5" /> Hapus gambar
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        JPG/PNG/WebP. Dikompres otomatis (browser + server) sebelum disimpan.
+      </p>
     </div>
   );
 }

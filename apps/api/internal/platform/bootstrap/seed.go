@@ -21,9 +21,10 @@ const (
 	adminRole  = "owner"
 	adminStatus = "active"
 
-	// AdminEmail / AdminPassword adalah kredensial bootstrap awal — WAJIB diganti
-	// setelah login pertama di lingkungan produksi.
+	// AdminEmail / AdminUsername / AdminPassword adalah kredensial bootstrap awal —
+	// WAJIB diganti setelah login pertama di lingkungan produksi.
 	AdminEmail    = "admin"
+	AdminUsername = "admin"
 	AdminPassword = "admin123"
 
 	maxDiscountPercent    = 10
@@ -83,11 +84,11 @@ func upsertAdmin(ctx context.Context, tx *sql.Tx, storeID string) error {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO admin_users (id, store_id, name, email, password_hash, role, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO admin_users (id, store_id, name, email, username, password_hash, role, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
-			store_id = VALUES(store_id), name = VALUES(name),
+			store_id = VALUES(store_id), name = VALUES(name), username = VALUES(username),
 			password_hash = VALUES(password_hash), role = VALUES(role), status = VALUES(status)`,
-		id.New(), storeID, adminName, AdminEmail, string(hash), adminRole, adminStatus)
+		id.New(), storeID, adminName, AdminEmail, AdminUsername, string(hash), adminRole, adminStatus)
 	return err
 }

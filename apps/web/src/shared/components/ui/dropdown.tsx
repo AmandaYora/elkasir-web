@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/shared/lib/cn";
 
 export interface DropdownProps {
@@ -9,14 +10,48 @@ export interface DropdownProps {
 }
 
 // Minimal dropdown menu (button trigger + click-outside close). No headless deps.
+// The menu is rendered in a portal with fixed positioning so it is never clipped by
+// an ancestor's `overflow-hidden` (e.g. a Card wrapping a Table).
 export function Dropdown({ trigger, children, align = "end", className }: DropdownProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Position the portaled menu against the trigger's viewport rect.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const t = triggerRef.current?.getBoundingClientRect();
+      if (!t) return;
+      const gap = 4;
+      const menuH = menuRef.current?.offsetHeight ?? 0;
+      const below = t.bottom + gap;
+      const flipUp = menuH > 0 && below + menuH > window.innerHeight && t.top - gap - menuH > 0;
+      const next: React.CSSProperties = {
+        position: "fixed",
+        top: flipUp ? t.top - gap - menuH : below,
+        opacity: 1,
+      };
+      if (align === "end") next.right = Math.max(8, window.innerWidth - t.right);
+      else next.left = t.left;
+      setStyle(next);
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onClick);
@@ -28,20 +63,25 @@ export function Dropdown({ trigger, children, align = "end", className }: Dropdo
   }, [open]);
 
   return (
-    <div ref={ref} className="relative inline-block">
-      <span onClick={() => setOpen((v) => !v)}>{trigger}</span>
-      {open && (
-        <div
-          className={cn(
-            "absolute z-20 mt-1 min-w-[10rem] overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg",
-            align === "end" ? "right-0" : "left-0",
-            className,
-          )}
-          onClick={() => setOpen(false)}
-        >
-          {children}
-        </div>
-      )}
+    <div className="relative inline-block">
+      <span ref={triggerRef} onClick={() => setOpen((v) => !v)}>
+        {trigger}
+      </span>
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: "fixed", opacity: 0, ...style }}
+            className={cn(
+              "z-50 min-w-40 overflow-hidden rounded-md border border-border bg-surface p-1 shadow-lg",
+              className,
+            )}
+            onClick={() => setOpen(false)}
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

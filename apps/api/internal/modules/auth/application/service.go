@@ -33,8 +33,13 @@ func inactiveAccount() error { return httpx.Forbidden("Akun ini nonaktif. Hubung
 func invalidSession() error  { return httpx.Unauthorized("Sesi tidak valid. Silakan login ulang.") }
 
 // LoginAdmin validates admin credentials and issues a token pair.
+// The identifier may be an email OR a username (both stored lowercased).
 func (s *Service) LoginAdmin(ctx context.Context, email, password string) (domain.TokenPair, domain.Identity, error) {
-	u, err := s.q.GetAdminUserByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
+	ident := strings.ToLower(strings.TrimSpace(email))
+	u, err := s.q.GetAdminUserByEmailOrUsername(ctx, sqlcgen.GetAdminUserByEmailOrUsernameParams{
+		Email:    ident,
+		Username: sql.NullString{String: ident, Valid: ident != ""},
+	})
 	if err != nil {
 		return domain.TokenPair{}, domain.Identity{}, invalidCreds()
 	}

@@ -19,6 +19,7 @@ tags:
   - name: Tables
   - name: Staff
   - name: AdminUsers
+  - name: Media
   - name: Shifts
   - name: Transactions
   - name: CashMovements
@@ -615,6 +616,40 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  # ─────────────────────────── Media ────────────────────────────
+  /uploads:
+    post:
+      tags: [Media]
+      operationId: uploadMedia
+      summary: Unggah gambar (owner/admin) — kompres tahap-2 lalu simpan ke object storage
+      description: >
+        Menerima satu file gambar (multipart) dan opsi `category` (default "product").
+        Backend mengompres ulang (resize 1280px, JPEG q82) lalu menyimpannya public-read
+        di elkasir/upload/<category>/<file>. Mengembalikan key & URL publik.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                category:
+                  type: string
+                  description: Folder tujuan (a-z0-9_-), default "product".
+      responses:
+        "201":
+          description: Berhasil diunggah
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ─────────────────────────── Shifts ───────────────────────────
   /shifts:
@@ -1432,6 +1467,7 @@ components:
         id: { type: string }
         name: { type: string }
         email: { type: string }
+        username: { type: string, description: "Login identifier (selain email). Kosong untuk pengguna lama." }
         role: { type: string, enum: [owner, admin, manager, viewer] }
         status: { type: string, enum: [active, inactive] }
         lastActiveAt: { type: string, format: date-time }
@@ -1439,10 +1475,16 @@ components:
 
     AdminUserCreateInput:
       type: object
-      required: [name, email, password, role]
+      required: [name, email, username, password, role]
       properties:
         name: { type: string }
         email: { type: string, format: email }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: "^[a-z0-9._-]+$"
+          description: "Dipakai untuk login (selain email)."
         password: { type: string, minLength: 6 }
         role: { type: string, enum: [owner, admin, manager, viewer] }
         status: { type: string, enum: [active, inactive] }
@@ -1455,6 +1497,14 @@ components:
         email: { type: string, format: email }
         role: { type: string, enum: [owner, admin, manager, viewer] }
         status: { type: string, enum: [active, inactive] }
+
+    # ── Media ──────────────────────────────────────────────────
+    UploadResult:
+      type: object
+      required: [key, url]
+      properties:
+        key: { type: string, description: "Object key di bucket (mis. elkasir/upload/product/<id>.jpg)" }
+        url: { type: string, description: "URL publik objek" }
 
     # ── Shift ──────────────────────────────────────────────────
     Shift:

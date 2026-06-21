@@ -872,6 +872,7 @@ type AdminUser struct {
 	LastActiveAt sql.NullTime     `json:"lastActiveAt"`
 	CreatedAt    time.Time        `json:"createdAt"`
 	UpdatedAt    time.Time        `json:"updatedAt"`
+	Username     sql.NullString   `json:"username"`
 }
 
 type CashMovement struct {

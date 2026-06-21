@@ -4,11 +4,13 @@ package app
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 
 	"github.com/elkasir/api/internal/modules/adminuser"
 	"github.com/elkasir/api/internal/modules/auth"
 	"github.com/elkasir/api/internal/modules/cashmovement"
 	"github.com/elkasir/api/internal/modules/category"
+	"github.com/elkasir/api/internal/modules/media"
 	"github.com/elkasir/api/internal/modules/payment"
 	"github.com/elkasir/api/internal/modules/product"
 	"github.com/elkasir/api/internal/modules/report"
@@ -22,6 +24,7 @@ import (
 	"github.com/elkasir/api/internal/platform/db"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 	"github.com/elkasir/api/internal/platform/httpserver"
+	"github.com/elkasir/api/internal/platform/storage"
 	"github.com/elkasir/api/internal/platform/uow"
 	"github.com/elkasir/api/internal/webui"
 	"github.com/go-chi/chi/v5"
@@ -79,6 +82,10 @@ func (a *App) routes() {
 	cashMod := cashmovement.New(a.Pool, a.Queries, mw, shiftMod.Client)
 	selfMod := selforder.New(a.UoW, mw, productMod.Client, txMod.SalesClient, shiftMod.Client, tableMod.Client, paymentMod.Client)
 
+	// Object storage (S3-compatible) — opsional. Bila kredensial belum diisi, klien
+	// dibiarkan nil dan endpoint upload mengembalikan error yang jelas.
+	mediaMod := media.New(a.newStorage(), mw)
+
 	// All business APIs are versioned under /api/v1 so the SPA (served at root) and the API
 	// never collide. The web client uses base URL "/api/v1".
 	a.Router.Route("/api/v1", func(r chi.Router) {
@@ -89,6 +96,7 @@ func (a *App) routes() {
 		tableMod.Handler.Routes(r)
 		staffMod.Handler.Routes(r)
 		adminMod.Handler.Routes(r)
+		mediaMod.Handler.Routes(r)
 
 		shiftMod.Handler.Routes(r)
 		txMod.Handler.Routes(r)
@@ -102,6 +110,22 @@ func (a *App) routes() {
 	// Static SPA (embedded in the binary). Catch-all at root, registered LAST — serves
 	// assets & falls back to index.html for client routes. 1 binary = web + API.
 	a.Router.Handle("/*", webui.Handler())
+}
+
+// newStorage builds the object-storage client when configured. A misconfiguration is
+// non-fatal: it logs a warning and returns nil so the app still boots (uploads off).
+func (a *App) newStorage() *storage.Client {
+	if !a.Cfg.Storage.Enabled() {
+		slog.Warn("object storage disabled: OBJSTORE_* not set — image uploads will fail")
+		return nil
+	}
+	sc, err := storage.New(a.Cfg.Storage)
+	if err != nil {
+		slog.Error("object storage init failed; uploads disabled", "err", err)
+		return nil
+	}
+	slog.Info("object storage enabled", "bucket", a.Cfg.Storage.Bucket, "endpoint", a.Cfg.Storage.Endpoint)
+	return sc
 }
 
 // Close releases resources (DB pool).

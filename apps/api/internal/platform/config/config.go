@@ -18,6 +18,7 @@ type Config struct {
 	DB                 DB
 	JWT                JWT
 	Xendit             Xendit
+	Storage            ObjectStorage
 }
 
 type DB struct {
@@ -38,6 +39,24 @@ type Xendit struct {
 
 // Enabled menandakan jalur QRIS Xendit aktif (secret key terisi).
 func (x Xendit) Enabled() bool { return strings.TrimSpace(x.SecretKey) != "" }
+
+// ObjectStorage adalah konfigurasi penyimpanan objek S3-compatible (idcloudhost).
+// Objek di-upload public-read, disajikan via URL langsung (lihat PublicURL).
+type ObjectStorage struct {
+	Endpoint      string // mis. is3.cloudhost.id (tanpa skema)
+	Region        string // opsional; default "us-east-1" bila kosong
+	Bucket        string // mis. elcodelabs
+	AccessKey     string
+	SecretKey     string
+	UseSSL        bool   // true → https
+	BasePath      string // prefix di dalam bucket, mis. elkasir/upload
+	PublicBaseURL string // opsional override URL publik; default https://<endpoint>/<bucket>
+}
+
+// Enabled menandakan storage aktif (kredensial & target lengkap).
+func (o ObjectStorage) Enabled() bool {
+	return o.Endpoint != "" && o.Bucket != "" && o.AccessKey != "" && o.SecretKey != ""
+}
 
 func (c Config) IsProduction() bool { return c.Env == "production" }
 
@@ -62,6 +81,16 @@ func Load() (Config, error) {
 			SecretKey:    os.Getenv("XENDIT_SECRET_KEY"),
 			WebhookToken: os.Getenv("XENDIT_WEBHOOK_TOKEN"),
 			BaseURL:      getEnv("XENDIT_BASE_URL", "https://api.xendit.co"),
+		},
+		Storage: ObjectStorage{
+			Endpoint:      getEnv("OBJSTORE_ENDPOINT", ""),
+			Region:        getEnv("OBJSTORE_REGION", ""),
+			Bucket:        getEnv("OBJSTORE_BUCKET", ""),
+			AccessKey:     os.Getenv("OBJSTORE_ACCESS_KEY"),
+			SecretKey:     os.Getenv("OBJSTORE_SECRET_KEY"),
+			UseSSL:        getBool("OBJSTORE_USE_SSL", true),
+			BasePath:      getEnv("OBJSTORE_BASE_PATH", "elkasir/upload"),
+			PublicBaseURL: getEnv("OBJSTORE_PUBLIC_BASE_URL", ""),
 		},
 	}
 
@@ -105,6 +134,17 @@ func getEnv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func getBool(key string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
+	}
 }
 
 func getDuration(key string, def time.Duration) time.Duration {

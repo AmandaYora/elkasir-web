@@ -36,7 +36,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const getAdminUserByEmail = `-- name: GetAdminUserByEmail :one
-SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at FROM admin_users WHERE email = ? LIMIT 1
+SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at, username FROM admin_users WHERE email = ? LIMIT 1
 `
 
 func (q *Queries) GetAdminUserByEmail(ctx context.Context, email string) (AdminUser, error) {
@@ -53,12 +53,41 @@ func (q *Queries) GetAdminUserByEmail(ctx context.Context, email string) (AdminU
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
+	)
+	return i, err
+}
+
+const getAdminUserByEmailOrUsername = `-- name: GetAdminUserByEmailOrUsername :one
+SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at, username FROM admin_users WHERE email = ? OR username = ? LIMIT 1
+`
+
+type GetAdminUserByEmailOrUsernameParams struct {
+	Email    string         `json:"email"`
+	Username sql.NullString `json:"username"`
+}
+
+func (q *Queries) GetAdminUserByEmailOrUsername(ctx context.Context, arg GetAdminUserByEmailOrUsernameParams) (AdminUser, error) {
+	row := q.db.QueryRowContext(ctx, getAdminUserByEmailOrUsername, arg.Email, arg.Username)
+	var i AdminUser
+	err := row.Scan(
+		&i.ID,
+		&i.StoreID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Status,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const getAdminUserByID = `-- name: GetAdminUserByID :one
-SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at FROM admin_users WHERE id = ? LIMIT 1
+SELECT id, store_id, name, email, password_hash, role, status, last_active_at, created_at, updated_at, username FROM admin_users WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetAdminUserByID(ctx context.Context, id string) (AdminUser, error) {
@@ -75,6 +104,7 @@ func (q *Queries) GetAdminUserByID(ctx context.Context, id string) (AdminUser, e
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Username,
 	)
 	return i, err
 }
