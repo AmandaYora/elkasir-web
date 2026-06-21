@@ -37,6 +37,13 @@ Nothing else needs discovering — everything below is the "why" and the one-tim
 | Server files | `~/elkasir/{.env (chmod600), .db_password, docker-compose.prod.yml, deploy.sh, DEPLOY_NEXT_STEPS.md}` (repo copies in `infra/deploy/`) |
 | Seeded admin | `admin` / `admin123` — **change after first login** |
 
+> **Host-level conventions (multi-app):** this VPS hosts apps under a fixed standard —
+> `/opt/elcodelabs/SERVER_PLAYBOOK.md` on the server (linked at `~/SERVER_PLAYBOOK.md`, with a
+> `~/AGENTS.md` pointer). It holds the **app registry** (port/DB-user/image per app) and the
+> "add a new app" recipe. **Before deploying another app on this box, read that playbook.**
+> Note: elkasir holds nginx's `:80` `default_server` (no domain yet) — a new app must use its
+> own `server_name <domain>`, never a second `default_server`. Next free port: `8082`.
+
 ---
 
 ## 0. TL;DR — the golden rule
