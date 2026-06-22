@@ -21,7 +21,10 @@ func NewRouter(cfg config.Config) *chi.Mux {
 	r.Use(requestLogger)
 	r.Use(recoverer)
 	r.Use(securityHeaders)
-	r.Use(middleware.Timeout(30 * time.Second))
+	// Timeout request 30 dtk untuk endpoint biasa; SSE (text/event-stream) dikecualikan
+	// agar koneksi push berumur panjang tidak diputus. WriteTimeout server juga dinolkan
+	// per-koneksi di handler SSE.
+	r.Use(timeoutExceptStream(30 * time.Second))
 	r.Use(corsMiddleware(cfg.CORSAllowedOrigins))
 	return r
 }

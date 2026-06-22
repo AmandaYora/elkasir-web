@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -154,34 +154,14 @@ export default function PublicOrderPage() {
     }
   };
 
-  // Polling status QRIS sampai lunas (webhook/simulasi yang menandai paid).
+  // Status QRIS via Server-Sent Events — layar maju OTOMATIS saat callback gateway menandai
+  // lunas. Tidak ada polling: satu koneksi event yang di-push server (lihat subscribeStatus).
   const orderId = placed?.order.id;
   const qrisPaid = orderStatus?.paymentStatus === "paid";
 
-  const orderIdRef = useRef(orderId);
-  orderIdRef.current = orderId;
-
   useEffect(() => {
     if (step !== "qris" || !orderId) return;
-    let active = true;
-    const poll = async () => {
-      try {
-        const s = await publicOrderService.status(orderIdRef.current!);
-        if (active) setOrderStatus(s);
-      } catch {
-        /* abaikan kegagalan polling sesaat */
-      }
-    };
-    void poll();
-    const timer = setInterval(() => {
-      if (orderStatus?.paymentStatus === "paid") return;
-      void poll();
-    }, 3000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return publicOrderService.subscribeStatus(orderId, setOrderStatus);
   }, [step, orderId]);
 
   const simulatePaid = async () => {

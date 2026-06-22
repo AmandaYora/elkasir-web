@@ -18,7 +18,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { formatIDR } from "@/shared/lib/formatter";
 
-// QrisPaymentPanel → pembayaran QRIS (QR dari gateway, status dari polling).
+// QrisPaymentPanel → pembayaran QRIS (QR dari gateway, status di-push via SSE/callback).
 // CashierBarcodePanel → bayar di kasir (kode klaim ditampilkan sebagai barcode Code128
 // untuk dipindai scanner kasir; kode juga ditampilkan untuk diketik manual).
 // OrderBreakdown → rincian biaya: Subtotal, Layanan (service + biaya gateway), PPN, Total.

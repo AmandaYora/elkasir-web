@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,24 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
+
+// timeoutExceptStream menerapkan middleware.Timeout(d) untuk request biasa, tetapi
+// MELEWATI request streaming (SSE — Accept: text/event-stream) yang memang berumur panjang
+// dan tidak boleh dipotong deadline request 30 dtk. Aturan generik di layer transport —
+// tidak terikat ke modul mana pun.
+func timeoutExceptStream(d time.Duration) func(http.Handler) http.Handler {
+	withTimeout := middleware.Timeout(d)
+	return func(next http.Handler) http.Handler {
+		guarded := withTimeout(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+				next.ServeHTTP(w, r) // streaming → tanpa deadline request
+				return
+			}
+			guarded.ServeHTTP(w, r)
+		})
+	}
+}
 
 // securityHeaders menambahkan header keamanan dasar pada setiap response.
 func securityHeaders(next http.Handler) http.Handler {

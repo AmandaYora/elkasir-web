@@ -1,4 +1,4 @@
-import { api } from "@/shared/services/http-client";
+import { api, BASE_URL } from "@/shared/services/http-client";
 import { endpoints } from "@/shared/services/api-endpoints";
 import type {
   PlaceOrderInput,
@@ -27,6 +27,27 @@ export const publicOrderService = {
     api.get<PublicSelfOrderStatus>(`${endpoints.publicOrder}/status/${selfOrderId}`, {
       auth: false,
     }),
+  // Berlangganan perubahan status pembayaran via Server-Sent Events (pengganti polling).
+  // Server mem-push status begitu callback gateway menandai lunas; EventSource otomatis
+  // reconnect bila koneksi terputus, dan handler server selalu mengirim snapshot saat
+  // tersambung sehingga tidak ada event yang terlewat. Mengembalikan fungsi untuk menutup
+  // koneksi. Endpoint publik (tanpa token) — EventSource memang tidak mengirim header auth.
+  subscribeStatus(
+    selfOrderId: string,
+    onStatus: (status: PublicSelfOrderStatus) => void,
+  ): () => void {
+    const es = new EventSource(`${BASE_URL}${endpoints.publicOrder}/events/${selfOrderId}`);
+    const handle = (data: string) => {
+      try {
+        onStatus(JSON.parse(data) as PublicSelfOrderStatus);
+      } catch {
+        /* abaikan payload tak valid */
+      }
+    };
+    es.addEventListener("status", (e) => handle((e as MessageEvent).data));
+    es.onmessage = (e) => handle(e.data); // fallback bila event tak bernama
+    return () => es.close();
+  },
   simulatePaid: (selfOrderId: string) =>
     api.post<void>(`${endpoints.publicOrder}/${selfOrderId}/simulate-paid`, undefined, {
       auth: false,

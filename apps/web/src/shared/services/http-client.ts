@@ -11,10 +11,11 @@ import { storage } from "@/shared/lib/storage";
 import { ApiError, type ApiFailure, type ApiPaginated, type ApiSuccess } from "@/shared/types/api";
 import type { ListQuery, Page } from "@/shared/types/pagination";
 
-const BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1").replace(
-  /\/$/,
-  "",
-);
+// Exported so non-Axios transports (e.g. SSE/EventSource, which can't use this Axios
+// instance) build URLs from the same base. Modules must not hardcode the base URL.
+export const BASE_URL = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1"
+).replace(/\/$/, "");
 
 const ACCESS_KEY = "elkasir_access_token";
 const REFRESH_KEY = "elkasir_refresh_token";

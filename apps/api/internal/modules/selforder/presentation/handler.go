@@ -5,8 +5,10 @@ package presentation
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	"github.com/elkasir/api/internal/modules/selforder/application"
@@ -14,6 +16,10 @@ import (
 	"github.com/elkasir/api/internal/platform/httpx"
 	"github.com/go-chi/chi/v5"
 )
+
+// paymentStatusPaid adalah nilai wire (JSON) status pembayaran lunas — dipakai untuk
+// menutup stream SSE begitu lunas. Sama dengan yang dikonsumsi frontend.
+const paymentStatusPaid = "paid"
 
 type Handler struct {
 	svc  *application.Service
@@ -32,6 +38,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/{tableCode}", h.place)
 		r.Post("/{tableCode}/quote", h.quote)
 		r.Get("/status/{selfOrderId}", h.status)
+		r.Get("/events/{selfOrderId}", h.events)               // SSE: status pembayaran real-time (pengganti polling)
 		r.Post("/{selfOrderId}/simulate-paid", h.simulatePaid) // DEV (gateway nonaktif)
 	})
 
@@ -93,6 +100,82 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, dto)
+}
+
+// events streams self-order payment status sebagai Server-Sent Events. Layar pelanggan maju
+// OTOMATIS begitu callback gateway menandai lunas — tanpa polling. Koneksi dikecualikan dari
+// timeout request 30 dtk (lewat header Accept: text/event-stream) dan write deadline-nya
+// dinolkan agar bertahan sampai pembayaran. Alurnya: subscribe DULU → kirim snapshot status
+// saat ini (menangani kasus sudah-lunas sebelum koneksi dibuka) → teruskan event berikutnya.
+func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
+	soID := chi.URLParam(r, "selfOrderId")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		httpx.Error(w, httpx.Internal("Streaming tidak didukung."))
+		return
+	}
+	// Lepaskan write deadline (server WriteTimeout) hanya untuk koneksi panjang ini.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	ch, unsubscribe := h.svc.SubscribePayment(soID)
+	defer unsubscribe()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // cegah buffering proxy (nginx)
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	if dto, err := h.svc.Status(r.Context(), soID); err == nil {
+		if !writeStatusEvent(w, flusher, dto) || dto.PaymentStatus == paymentStatusPaid {
+			return
+		}
+	}
+
+	ctx := r.Context()
+	keepalive := time.NewTicker(20 * time.Second)
+	defer keepalive.Stop()
+	for {
+		select {
+		case <-ctx.Done(): // koneksi ditutup klien (atau server shutdown)
+			return
+		case dto, open := <-ch:
+			if !open {
+				return
+			}
+			if !writeStatusEvent(w, flusher, dto) || dto.PaymentStatus == paymentStatusPaid {
+				return
+			}
+		case <-keepalive.C:
+			// Komentar SSE menjaga koneksi hidup melewati idle-timeout proxy; gagal tulis = putus.
+			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// writeStatusEvent menulis satu event SSE bernama "status" berisi StatusDTO (JSON).
+// Mengembalikan false bila penulisan gagal (koneksi putus) agar pemanggil berhenti.
+func writeStatusEvent(w http.ResponseWriter, flusher http.Flusher, dto application.StatusDTO) bool {
+	payload, err := json.Marshal(dto)
+	if err != nil {
+		return false
+	}
+	if _, err := io.WriteString(w, "event: status\ndata: "); err != nil {
+		return false
+	}
+	if _, err := w.Write(payload); err != nil {
+		return false
+	}
+	if _, err := io.WriteString(w, "\n\n"); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 func (h *Handler) simulatePaid(w http.ResponseWriter, r *http.Request) {

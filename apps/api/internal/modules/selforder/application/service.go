@@ -46,6 +46,7 @@ type Service struct {
 	payments paymentclient.Client
 	settings settingsclient.Client
 	uow      *uow.Manager
+	notifier *PaymentNotifier // push status pembayaran ke listener SSE (in-modul)
 }
 
 func NewService(
@@ -58,7 +59,7 @@ func NewService(
 	settingsClient settingsclient.Client,
 	uowMgr *uow.Manager,
 ) *Service {
-	return &Service{repo: repo, products: productClient, sales: salesClient, shifts: shiftClient, tables: tableClient, payments: paymentClient, settings: settingsClient, uow: uowMgr}
+	return &Service{repo: repo, products: productClient, sales: salesClient, shifts: shiftClient, tables: tableClient, payments: paymentClient, settings: settingsClient, uow: uowMgr, notifier: newPaymentNotifier()}
 }
 
 func (s *Service) PaymentEnabled() bool { return s.payments.Enabled() }
@@ -329,7 +330,7 @@ func (s *Service) priceQuote(ctx context.Context, storeID, paymentMethod string,
 	return shareddomain.ComputeBreakdown(subtotal, 0, gatewayFee, cfg.ServicePercent, cfg.TaxPercent, cfg.TaxEnabled), nil
 }
 
-// ── Status polling (publik) ──────────────────────────────────
+// ── Status (publik) ──────────────────────────────────────────
 func (s *Service) Status(ctx context.Context, soID string) (StatusDTO, error) {
 	o, err := s.repo.GetByID(ctx, soID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -339,6 +340,22 @@ func (s *Service) Status(ctx context.Context, soID string) (StatusDTO, error) {
 		return StatusDTO{}, err
 	}
 	return StatusDTO{ID: o.ID, Status: string(o.Status), PaymentStatus: string(o.PaymentStatus), Total: o.Total}, nil
+}
+
+// SubscribePayment mendaftarkan listener SSE untuk perubahan status pembayaran self-order.
+// Mengembalikan channel event + fungsi unsubscribe (wajib dipanggil saat koneksi tutup).
+func (s *Service) SubscribePayment(soID string) (<-chan StatusDTO, func()) {
+	return s.notifier.subscribe(soID)
+}
+
+// notifyStatus mendorong status terkini self-order ke listener SSE (best-effort; kegagalan
+// baca diabaikan karena handler tetap mengirim snapshot saat koneksi dibuka).
+func (s *Service) notifyStatus(ctx context.Context, soID string) {
+	dto, err := s.Status(ctx, soID)
+	if err != nil {
+		return
+	}
+	s.notifier.publish(dto)
 }
 
 // SimulatePaid (DEV) menandai self-order QRIS pending menjadi lunas tanpa gateway.
@@ -356,7 +373,11 @@ func (s *Service) SimulatePaid(ctx context.Context, soID string) error {
 	if o.PaymentStatus == sqlcgen.SelfOrdersPaymentStatusPaid {
 		return nil
 	}
-	return s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", "")
+	if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", ""); err != nil {
+		return err
+	}
+	s.notifyStatus(ctx, o.ID) // dorong event ke layar pelanggan (SSE)
+	return nil
 }
 
 // ── Webhook pembayaran (provider-agnostic) ───────────────────
@@ -392,6 +413,7 @@ func (s *Service) HandleWebhook(ctx context.Context, header http.Header, body []
 			if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", ""); err != nil {
 				return err // gagal sementara → biarkan provider retry (belum ditandai seen)
 			}
+			s.notifyStatus(ctx, o.ID) // push event lunas ke layar pelanggan (SSE) — best-effort
 		}
 	}
 	return s.payments.MarkWebhookSeen(ctx, ev.EventID)
