@@ -68,6 +68,14 @@ export interface PublicMenu {
   table: { code: string; name: string; area: string; status: string };
   categories: string[];
   products: PublicMenuProduct[];
+  // Flag fitur toko: kontrol tampil/tidaknya halaman & tiap metode pembayaran.
+  featureSelfOrder: boolean;
+  featureQris: boolean;
+  featurePayAtCashier: boolean;
+  // Persen layanan & PPN agar rincian biaya bisa menjelaskan dirinya (mis. "Layanan (2%)").
+  servicePercent: number;
+  taxPercent: number;
+  taxEnabled: boolean;
 }
 
 export interface PlaceOrderItem {

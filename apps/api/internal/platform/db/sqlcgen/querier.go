@@ -75,6 +75,7 @@ type Querier interface {
 	ListSelfOrderItems(ctx context.Context, selfOrderID string) ([]SelfOrderItem, error)
 	ListShifts(ctx context.Context, arg ListShiftsParams) ([]Shift, error)
 	ListStaff(ctx context.Context, storeID string) ([]Staff, error)
+	ListSupervisorPins(ctx context.Context, storeID string) ([]ListSupervisorPinsRow, error)
 	ListTables(ctx context.Context, storeID string) ([]DiningTable, error)
 	ListTransactionItems(ctx context.Context, transactionID string) ([]TransactionItem, error)
 	ListWithdrawals(ctx context.Context, arg ListWithdrawalsParams) ([]Withdrawal, error)
@@ -101,6 +102,7 @@ type Querier interface {
 	UpdateSelfOrderStatus(ctx context.Context, arg UpdateSelfOrderStatusParams) (int64, error)
 	UpdateStaff(ctx context.Context, arg UpdateStaffParams) error
 	UpdateStaffPassword(ctx context.Context, arg UpdateStaffPasswordParams) error
+	UpdateStaffPin(ctx context.Context, arg UpdateStaffPinParams) error
 	UpdateTable(ctx context.Context, arg UpdateTableParams) error
 	UpsertSettings(ctx context.Context, arg UpsertSettingsParams) error
 }

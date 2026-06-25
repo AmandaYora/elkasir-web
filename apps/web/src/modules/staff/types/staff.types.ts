@@ -8,6 +8,7 @@ export interface Staff {
   email?: string;
   role: StaffRole;
   status: ActiveStatus;
+  hasPin: boolean;
   createdAt: string;
 }
 

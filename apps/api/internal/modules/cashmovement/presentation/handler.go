@@ -24,6 +24,8 @@ func NewHandler(svc *application.Service, auth authcontract.Authenticator) *Hand
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/cash-movements", func(r chi.Router) {
 		r.Use(h.auth.Authenticate)
+		// Mutasi kas (modal/biaya/penyesuaian) = supervisor-only di sisi POS (admin web penuh).
+		r.Use(authcontract.RequireStaffSupervisorOrAdmin)
 
 		r.Get("/", h.list)
 		r.Post("/", h.create)

@@ -28,11 +28,15 @@ export function OrderBreakdown({
   serviceLine,
   tax,
   total,
+  servicePercent,
+  taxPercent,
 }: {
   subtotal: number;
   serviceLine: number;
   tax: number;
   total: number;
+  servicePercent?: number;
+  taxPercent?: number;
 }) {
   const Row = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (
     <div
@@ -42,11 +46,14 @@ export function OrderBreakdown({
       <span>{formatIDR(value)}</span>
     </div>
   );
+  // Sertakan persen pada label agar rincian "menjelaskan dirinya" ke pelanggan awam.
+  const serviceLabel = servicePercent ? `Layanan (${servicePercent}%)` : "Layanan";
+  const taxLabel = taxPercent ? `PPN (${taxPercent}%)` : "PPN";
   return (
     <div className="w-full rounded-xl border border-border bg-surface">
       <Row label="Subtotal" value={subtotal} />
-      {serviceLine > 0 && <Row label="Layanan" value={serviceLine} />}
-      {tax > 0 && <Row label="PPN" value={tax} />}
+      {serviceLine > 0 && <Row label={serviceLabel} value={serviceLine} />}
+      {tax > 0 && <Row label={taxLabel} value={tax} />}
       <div className="border-t border-border">
         <Row label="Total" value={total} strong />
       </div>

@@ -88,8 +88,9 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	page := httpx.PageFromRequest(r, 20, 100)
+	p := authcontract.MustPrincipal(r.Context())
 	f := domain.ListFilter{
-		StoreID:       authcontract.MustPrincipal(r.Context()).StoreID,
+		StoreID:       p.StoreID,
 		Status:        httpx.QueryStr(r, "status", ""),
 		Source:        httpx.QueryStr(r, "source", ""),
 		PaymentMethod: httpx.QueryStr(r, "paymentMethod", ""),
@@ -98,6 +99,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		To:            parseTime(httpx.QueryStr(r, "to", "")),
 		Limit:         page.Limit,
 		Offset:        page.Offset,
+	}
+	// "Kasir = kasir saja": staf kasir hanya melihat transaksi miliknya sendiri; supervisor &
+	// admin melihat seluruh transaksi toko (riwayat lintas-shift).
+	if p.Actor == authcontract.ActorStaff && p.Role != "supervisor" {
+		f.CashierID = p.SubjectID
 	}
 	items, total, err := h.svc.List(r.Context(), f)
 	if err != nil {

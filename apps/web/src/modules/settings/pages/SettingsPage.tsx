@@ -9,11 +9,14 @@ import {
   CardDescription,
 } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
+import { MoneyInput } from "@/shared/components/ui/money-input";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Label } from "@/shared/components/ui/label";
 import { settingsService } from "@/modules/settings/services/settings.service";
 import { settingsSchema } from "@/modules/settings/schemas/settings.schema";
+import { zodFieldErrors } from "@/shared/lib/form";
 import type { Settings } from "@/modules/settings/types/settings.types";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Terjadi kesalahan.");
@@ -23,6 +26,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -44,8 +48,10 @@ export default function SettingsPage() {
     );
   }
 
-  const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setForm((f) => (f ? { ...f, [key]: value } : f));
+    setErrors((e) => (e[key as string] ? { ...e, [key as string]: "" } : e));
+  };
 
   const num = (key: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement>) =>
     set(key, (Number.parseInt(e.target.value, 10) || 0) as Settings[typeof key]);
@@ -53,9 +59,11 @@ export default function SettingsPage() {
   const save = async () => {
     const parsed = settingsSchema.safeParse(form);
     if (!parsed.success) {
+      setErrors(zodFieldErrors(parsed.error));
       toast.error(parsed.error.issues[0]?.message ?? "Nilai tidak valid.");
       return;
     }
+    setErrors({});
     setSaving(true);
     try {
       const updated = await settingsService.update(parsed.data);
@@ -104,7 +112,9 @@ export default function SettingsPage() {
                 value={form.taxPercent}
                 disabled={!form.taxEnabled}
                 onChange={num("taxPercent")}
+                aria-invalid={!!errors.taxPercent}
               />
+              <FieldError msg={errors.taxPercent} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="servicePercent">Biaya layanan (%)</Label>
@@ -115,7 +125,9 @@ export default function SettingsPage() {
                 max={100}
                 value={form.servicePercent}
                 onChange={num("servicePercent")}
+                aria-invalid={!!errors.servicePercent}
               />
+              <FieldError msg={errors.servicePercent} />
             </div>
           </div>
         </CardContent>
@@ -123,7 +135,10 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Fitur</CardTitle>
+          <CardTitle>Fitur & Metode Pembayaran</CardTitle>
+          <CardDescription>
+            Atur self-order QR meja dan metode pembayaran yang tampil ke pelanggan.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <label className="flex items-center gap-3">
@@ -133,13 +148,34 @@ export default function SettingsPage() {
             />
             <span className="text-sm font-medium">Self-order pelanggan (QR meja)</span>
           </label>
-          <label className="flex items-center gap-3">
-            <Checkbox
-              checked={form.featureQris}
-              onChange={(e) => set("featureQris", e.target.checked)}
-            />
-            <span className="text-sm font-medium">Pembayaran QRIS</span>
-          </label>
+
+          <div className="space-y-3 border-l-2 border-border pl-4">
+            <p className="text-xs text-muted">
+              Metode pembayaran self-order. Nonaktifkan salah satu untuk menyembunyikannya dari
+              halaman pesan pelanggan.
+            </p>
+            <label className="flex items-center gap-3">
+              <Checkbox
+                checked={form.featureQris}
+                disabled={!form.featureSelfOrder}
+                onChange={(e) => set("featureQris", e.target.checked)}
+              />
+              <span className="text-sm font-medium">Bayar QRIS (payment gateway)</span>
+            </label>
+            <label className="flex items-center gap-3">
+              <Checkbox
+                checked={form.featurePayAtCashier}
+                disabled={!form.featureSelfOrder}
+                onChange={(e) => set("featurePayAtCashier", e.target.checked)}
+              />
+              <span className="text-sm font-medium">Bayar di kasir (tunai)</span>
+            </label>
+            {form.featureSelfOrder && !form.featureQris && !form.featurePayAtCashier && (
+              <p className="text-xs font-medium text-danger">
+                Minimal satu metode pembayaran harus aktif saat self-order aktif.
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -158,27 +194,27 @@ export default function SettingsPage() {
               max={100}
               value={form.maxDiscountPercent}
               onChange={num("maxDiscountPercent")}
+              aria-invalid={!!errors.maxDiscountPercent}
             />
+            <FieldError msg={errors.maxDiscountPercent} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="maxOperationalExpense">Biaya operasional maks (Rp)</Label>
-            <Input
+            <MoneyInput
               id="maxOperationalExpense"
-              type="number"
-              min={0}
               value={form.maxOperationalExpense}
-              onChange={num("maxOperationalExpense")}
+              onChange={(n) => set("maxOperationalExpense", n)}
             />
+            <FieldError msg={errors.maxOperationalExpense} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cashVarianceTolerance">Toleransi selisih kas (Rp)</Label>
-            <Input
+            <MoneyInput
               id="cashVarianceTolerance"
-              type="number"
-              min={0}
               value={form.cashVarianceTolerance}
-              onChange={num("cashVarianceTolerance")}
+              onChange={(n) => set("cashVarianceTolerance", n)}
             />
+            <FieldError msg={errors.cashVarianceTolerance} />
           </div>
         </CardContent>
       </Card>

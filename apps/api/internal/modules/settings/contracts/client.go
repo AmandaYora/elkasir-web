@@ -13,6 +13,7 @@ type Settings struct {
 	CashVarianceTolerance int64
 	FeatureSelfOrder      bool
 	FeatureQris           bool
+	FeaturePayAtCashier   bool
 	TaxEnabled            bool
 	TaxPercent            int32
 	ServicePercent        int32

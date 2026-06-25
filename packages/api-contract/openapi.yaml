@@ -514,6 +514,29 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /staff/{id}/pin:
+    parameters:
+      - $ref: "#/components/parameters/PathId"
+    put:
+      tags: [Staff]
+      operationId: setStaffPin
+      summary: Set/hapus PIN persetujuan supervisor (owner/admin; hanya untuk role supervisor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin: { type: string, description: "PIN 4–6 digit; string kosong menghapus PIN." }
+      responses:
+        "204": { description: PIN disimpan/dihapus }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ─────────────────────────── Admin Users ───────────────────────────
   /admin-users:
     get:
@@ -1101,6 +1124,45 @@ paths:
               schema: { $ref: "#/components/schemas/PosPricing" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /pos/config:
+    get:
+      tags: [Settings]
+      operationId: getPosConfig
+      summary: Konfigurasi POS lengkap (harga + fitur + ambang) — admin atau staf
+      description: >
+        Satu payload yang ditarik aplikasi POS saat login & refresh-on-resume. Server yang
+        memutuskan flag fitur; klien menyembunyikan fitur yang dimatikan (hide, bukan disable).
+      responses:
+        "200":
+          description: Konfigurasi POS
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PosConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /pos/approvals/verify-pin:
+    post:
+      tags: [Auth]
+      operationId: verifySupervisorPin
+      summary: Verifikasi PIN supervisor (staf POS, rate-limited) untuk approve-in-place
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties: { pin: { type: string, description: "PIN 4–6 digit" } }
+      responses:
+        "200":
+          description: Identitas supervisor penyetuju
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupervisorApprovalRef" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: Terlalu banyak percobaan (rate limit) }
+
   /settings:
     get:
       tags: [Settings]
@@ -1496,7 +1558,7 @@ components:
     # ── Staff ──────────────────────────────────────────────────
     Staff:
       type: object
-      required: [id, name, username, email, role, status, createdAt]
+      required: [id, name, username, email, role, status, hasPin, createdAt]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1504,6 +1566,7 @@ components:
         email: { type: string }
         role: { type: string, enum: [cashier, supervisor] }
         status: { type: string, enum: [active, inactive] }
+        hasPin: { type: boolean, description: "Supervisor approval PIN is set (admin can spot who still needs one)." }
         createdAt: { type: string, format: date-time }
 
     StaffCreateInput:
@@ -1858,17 +1921,51 @@ components:
         taxPercent: { type: integer, format: int32, description: "PPN %, mis. 11." }
         taxEnabled: { type: boolean }
 
+    PosConfig:
+      type: object
+      required: [pricing, features, thresholds]
+      properties:
+        pricing:
+          type: object
+          required: [servicePercent, taxPercent, taxEnabled]
+          properties:
+            servicePercent: { type: integer, format: int32 }
+            taxPercent: { type: integer, format: int32 }
+            taxEnabled: { type: boolean }
+        features:
+          type: object
+          required: [qris, selfOrder, payAtCashier]
+          properties:
+            qris: { type: boolean, description: "Metode QRIS aktif (klien menyembunyikan bila false)." }
+            selfOrder: { type: boolean }
+            payAtCashier: { type: boolean }
+        thresholds:
+          type: object
+          required: [maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance]
+          properties:
+            maxDiscountPercent: { type: integer, format: int32 }
+            maxOperationalExpense: { type: integer, format: int64 }
+            cashVarianceTolerance: { type: integer, format: int64 }
+
+    SupervisorApprovalRef:
+      type: object
+      required: [approvedById, approvedByName]
+      properties:
+        approvedById: { type: string }
+        approvedByName: { type: string }
+
     Settings:
       type: object
       required:
         [maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance,
-         featureSelfOrder, featureQris, taxEnabled, taxPercent, servicePercent]
+         featureSelfOrder, featureQris, featurePayAtCashier, taxEnabled, taxPercent, servicePercent]
       properties:
         maxDiscountPercent: { type: integer, format: int32 }
         maxOperationalExpense: { type: integer, format: int64 }
         cashVarianceTolerance: { type: integer, format: int64 }
         featureSelfOrder: { type: boolean }
-        featureQris: { type: boolean }
+        featureQris: { type: boolean, description: "Tampilkan metode bayar QRIS pada self-order." }
+        featurePayAtCashier: { type: boolean, description: "Tampilkan metode bayar di kasir (tunai) pada self-order." }
         taxEnabled: { type: boolean, description: "Aktifkan PPN." }
         taxPercent: { type: integer, format: int32, description: "PPN %, mis. 11." }
         servicePercent: { type: integer, format: int32, description: "Biaya layanan %, mis. 2." }
@@ -1894,7 +1991,9 @@ components:
 
     SelfOrderMenu:
       type: object
-      required: [table, categories, products]
+      required:
+        [table, categories, products, featureSelfOrder, featureQris, featurePayAtCashier,
+         servicePercent, taxPercent, taxEnabled]
       properties:
         table: { $ref: "#/components/schemas/SelfOrderTable" }
         categories:
@@ -1903,6 +2002,12 @@ components:
         products:
           type: array
           items: { $ref: "#/components/schemas/SelfOrderMenuProduct" }
+        featureSelfOrder: { type: boolean, description: "Self-order aktif; false → halaman menampilkan state ditutup." }
+        featureQris: { type: boolean, description: "Metode bayar QRIS tersedia untuk pelanggan." }
+        featurePayAtCashier: { type: boolean, description: "Metode bayar di kasir tersedia untuk pelanggan." }
+        servicePercent: { type: integer, format: int32, description: "Persen biaya layanan (untuk label rincian, mis. 2)." }
+        taxPercent: { type: integer, format: int32, description: "Persen PPN (untuk label rincian, mis. 11)." }
+        taxEnabled: { type: boolean }
 
     SelfOrderStatus:
       type: object

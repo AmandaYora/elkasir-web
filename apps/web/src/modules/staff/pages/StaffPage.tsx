@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, MoreHorizontal, Pencil, Trash2, KeyRound } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, KeyRound, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -21,6 +21,8 @@ import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedba
 import { useAsync } from "@/shared/hooks/useAsync";
 import { staffService } from "@/modules/staff/services/staff.service";
 import { staffCreateSchema, staffUpdateSchema } from "@/modules/staff/schemas/staff.schema";
+import { zodFieldErrors } from "@/shared/lib/form";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { StaffRoleBadge, StaffStatusBadge } from "@/modules/staff/components/StaffRoleBadge";
 import type {
   ActiveStatus,
@@ -57,6 +59,7 @@ export default function StaffPage() {
   const [editing, setEditing] = useState<Staff | null>(null);
   const [deleting, setDeleting] = useState<Staff | null>(null);
   const [resetTarget, setResetTarget] = useState<Staff | null>(null);
+  const [pinTarget, setPinTarget] = useState<Staff | null>(null);
 
   const refresh = () => staffQuery.refetch();
 
@@ -142,7 +145,20 @@ export default function StaffPage() {
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted">{c.username}</TableCell>
                   <TableCell>
-                    <StaffRoleBadge role={c.role} />
+                    <div className="flex flex-col items-start gap-1">
+                      <StaffRoleBadge role={c.role} />
+                      {c.role === "supervisor" &&
+                        (c.hasPin ? (
+                          <span className="text-[11px] font-medium text-muted">PIN aktif</span>
+                        ) : (
+                          <button
+                            onClick={() => setPinTarget(c)}
+                            className="text-[11px] font-semibold text-warning underline-offset-2 hover:underline"
+                          >
+                            PIN belum diatur — atur
+                          </button>
+                        ))}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <StaffStatusBadge status={c.status} />
@@ -166,6 +182,11 @@ export default function StaffPage() {
                       <DropdownItem onClick={() => setResetTarget(c)}>
                         <KeyRound className="h-3.5 w-3.5" /> Reset password
                       </DropdownItem>
+                      {c.role === "supervisor" && (
+                        <DropdownItem onClick={() => setPinTarget(c)}>
+                          <Hash className="h-3.5 w-3.5" /> Atur PIN supervisor
+                        </DropdownItem>
+                      )}
                       <DropdownItem danger onClick={() => setDeleting(c)}>
                         <Trash2 className="h-3.5 w-3.5" /> Hapus
                       </DropdownItem>
@@ -191,16 +212,21 @@ export default function StaffPage() {
         <StaffForm
           key={editing?.id ?? "new"}
           editing={editing}
-          onDone={() => {
+          onDone={(created) => {
             setFormOpen(false);
             setEditing(null);
             refresh();
+            // Supervisor baru wajib punya PIN agar override di POS berfungsi → langsung tawarkan.
+            if (created && created.role === "supervisor") setPinTarget(created);
           }}
         />
       </Modal>
 
       {/* Reset password */}
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
+
+      {/* Atur PIN supervisor */}
+      <SetPinModal target={pinTarget} onClose={() => setPinTarget(null)} />
 
       <ConfirmDialog
         open={!!deleting}
@@ -216,7 +242,13 @@ export default function StaffPage() {
   );
 }
 
-function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => void }) {
+function StaffForm({
+  editing,
+  onDone,
+}: {
+  editing: Staff | null;
+  onDone: (created?: Staff) => void;
+}) {
   const [form, setForm] = useState<FormState>(
     editing
       ? {
@@ -230,44 +262,42 @@ function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => v
       : emptyForm,
   );
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const setField = (key: keyof FormState, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => (e[key] ? { ...e, [key]: "" } : e));
+  };
 
   const submit = async () => {
     const email = form.email.trim() || undefined;
+    const base = {
+      name: form.name.trim(),
+      username: form.username.trim(),
+      email,
+      role: form.role,
+      status: form.status,
+    };
+    const parsed = editing
+      ? staffUpdateSchema.safeParse(base)
+      : staffCreateSchema.safeParse({ ...base, password: form.password });
+    if (!parsed.success) {
+      setErrors(zodFieldErrors(parsed.error));
+      return;
+    }
     setBusy(true);
     try {
+      let created: Staff | undefined;
       if (editing) {
-        const body: StaffUpdateInput = {
-          name: form.name.trim(),
-          username: form.username.trim(),
-          email,
-          role: form.role,
-          status: form.status,
-        };
-        const parsed = staffUpdateSchema.safeParse(body);
-        if (!parsed.success) {
-          toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
-          return;
-        }
-        await staffService.update(editing.id, body);
+        await staffService.update(editing.id, base as StaffUpdateInput);
         toast.success("Data staf diperbarui");
       } else {
-        const body: StaffCreateInput = {
-          name: form.name.trim(),
-          username: form.username.trim(),
-          email,
+        created = await staffService.create({
+          ...base,
           password: form.password,
-          role: form.role,
-          status: form.status,
-        };
-        const parsed = staffCreateSchema.safeParse(body);
-        if (!parsed.success) {
-          toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
-          return;
-        }
-        await staffService.create(body);
+        } as StaffCreateInput);
         toast.success("Staf ditambahkan");
       }
-      onDone();
+      onDone(created);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan staf");
     } finally {
@@ -281,18 +311,22 @@ function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => v
         <Label>Nama Lengkap</Label>
         <Input
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => setField("name", e.target.value)}
           placeholder="mis. Rini Wulandari"
+          aria-invalid={!!errors.name}
         />
+        <FieldError msg={errors.name} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
           <Label>Username</Label>
           <Input
             value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            onChange={(e) => setField("username", e.target.value)}
             placeholder="mis. rini"
+            aria-invalid={!!errors.username}
           />
+          <FieldError msg={errors.username} />
         </div>
         {!editing && (
           <div className="grid gap-2">
@@ -300,9 +334,11 @@ function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => v
             <Input
               type="text"
               value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              onChange={(e) => setField("password", e.target.value)}
               placeholder="mis. kasir123"
+              aria-invalid={!!errors.password}
             />
+            <FieldError msg={errors.password} />
           </div>
         )}
       </div>
@@ -311,9 +347,11 @@ function StaffForm({ editing, onDone }: { editing: Staff | null; onDone: () => v
         <Input
           type="email"
           value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          onChange={(e) => setField("email", e.target.value)}
           placeholder="rini@elkasir.id"
+          aria-invalid={!!errors.email}
         />
+        <FieldError msg={errors.email} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
@@ -395,6 +433,71 @@ function ResetPasswordModal({ target, onClose }: { target: Staff | null; onClose
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="mis. kasir123"
+        />
+      </div>
+    </Modal>
+  );
+}
+
+// SetPinModal mengatur PIN persetujuan (approve-in-place) untuk supervisor. PIN 4–6 digit
+// dipakai supervisor untuk mengotorisasi aksi kasir (diskon/selisih kas) langsung di POS.
+function SetPinModal({ target, onClose }: { target: Staff | null; onClose: () => void }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    setPin("");
+    onClose();
+  };
+
+  const submit = async (clear = false) => {
+    if (!target) return;
+    const value = clear ? "" : pin.trim();
+    if (!clear && !/^\d{4,6}$/.test(value)) {
+      toast.error("PIN harus 4–6 digit angka.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await staffService.setPin(target.id, value);
+      toast.success(clear ? "PIN dihapus" : "PIN supervisor disimpan");
+      close();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan PIN");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={!!target}
+      onClose={close}
+      title="PIN supervisor"
+      description={
+        target
+          ? `PIN 4–6 digit untuk ${target.name}. Dipakai menyetujui diskon/selisih kas di atas batas langsung di POS.`
+          : undefined
+      }
+      footer={
+        <div className="flex justify-between gap-2">
+          <Button variant="ghost" onClick={() => submit(true)} disabled={busy}>
+            Hapus PIN
+          </Button>
+          <Button loading={busy} onClick={() => submit(false)}>
+            Simpan PIN
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-2">
+        <Label>PIN baru</Label>
+        <Input
+          inputMode="numeric"
+          maxLength={6}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+          placeholder="mis. 1234"
         />
       </div>
     </Modal>

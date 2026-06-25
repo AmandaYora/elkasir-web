@@ -55,7 +55,7 @@ func (q *Queries) DeleteStaff(ctx context.Context, arg DeleteStaffParams) error 
 }
 
 const getStaffScoped = `-- name: GetStaffScoped :one
-SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at FROM staff WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at, pin_hash FROM staff WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetStaffScopedParams struct {
@@ -77,12 +77,13 @@ func (q *Queries) GetStaffScoped(ctx context.Context, arg GetStaffScopedParams) 
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PinHash,
 	)
 	return i, err
 }
 
 const listStaff = `-- name: ListStaff :many
-SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at FROM staff WHERE store_id = ? ORDER BY created_at DESC
+SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at, pin_hash FROM staff WHERE store_id = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListStaff(ctx context.Context, storeID string) ([]Staff, error) {
@@ -105,7 +106,42 @@ func (q *Queries) ListStaff(ctx context.Context, storeID string) ([]Staff, error
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PinHash,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSupervisorPins = `-- name: ListSupervisorPins :many
+SELECT id, name, pin_hash FROM staff
+WHERE store_id = ? AND role = 'supervisor' AND status = 'active' AND pin_hash IS NOT NULL
+`
+
+type ListSupervisorPinsRow struct {
+	ID      string         `json:"id"`
+	Name    string         `json:"name"`
+	PinHash sql.NullString `json:"pinHash"`
+}
+
+func (q *Queries) ListSupervisorPins(ctx context.Context, storeID string) ([]ListSupervisorPinsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSupervisorPins, storeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSupervisorPinsRow{}
+	for rows.Next() {
+		var i ListSupervisorPinsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.PinHash); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -159,5 +195,20 @@ type UpdateStaffPasswordParams struct {
 
 func (q *Queries) UpdateStaffPassword(ctx context.Context, arg UpdateStaffPasswordParams) error {
 	_, err := q.db.ExecContext(ctx, updateStaffPassword, arg.PasswordHash, arg.ID, arg.StoreID)
+	return err
+}
+
+const updateStaffPin = `-- name: UpdateStaffPin :exec
+UPDATE staff SET pin_hash = ? WHERE id = ? AND store_id = ?
+`
+
+type UpdateStaffPinParams struct {
+	PinHash sql.NullString `json:"pinHash"`
+	ID      string         `json:"id"`
+	StoreID string         `json:"storeId"`
+}
+
+func (q *Queries) UpdateStaffPin(ctx context.Context, arg UpdateStaffPinParams) error {
+	_, err := q.db.ExecContext(ctx, updateStaffPin, arg.PinHash, arg.ID, arg.StoreID)
 	return err
 }

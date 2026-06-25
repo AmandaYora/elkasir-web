@@ -16,6 +16,7 @@ type Staff struct {
 	Email     string
 	Role      string
 	Status    string
+	HasPin    bool // supervisor approval PIN is set (admin can see who still needs one)
 	CreatedAt time.Time
 }
 
@@ -60,6 +61,20 @@ func validateNameUsername(name, username string) error {
 	}
 	if strings.TrimSpace(username) == "" {
 		return httpx.Validation("Username wajib diisi.")
+	}
+	return nil
+}
+
+// ValidatePIN enforces a numeric 4–6 digit supervisor PIN.
+func ValidatePIN(pin string) error {
+	pin = strings.TrimSpace(pin)
+	if len(pin) < 4 || len(pin) > 6 {
+		return httpx.Validation("PIN supervisor harus 4–6 digit.")
+	}
+	for _, c := range pin {
+		if c < '0' || c > '9' {
+			return httpx.Validation("PIN supervisor hanya boleh angka.")
+		}
 	}
 	return nil
 }

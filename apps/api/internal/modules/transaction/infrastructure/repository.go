@@ -56,6 +56,10 @@ func (r *Repo) List(ctx context.Context, f domain.ListFilter) ([]sqlcgen.Transac
 		where.WriteString(" AND code LIKE ?")
 		args = append(args, "%"+f.Search+"%")
 	}
+	if f.CashierID != "" {
+		where.WriteString(" AND cashier_id = ?")
+		args = append(args, f.CashierID)
+	}
 	if f.From != nil {
 		where.WriteString(" AND created_at >= ?")
 		args = append(args, *f.From)

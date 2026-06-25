@@ -24,6 +24,8 @@ func NewHandler(svc *application.Service, auth authcontract.Authenticator) *Hand
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/reports", func(r chi.Router) {
 		r.Use(h.auth.Authenticate)
+		// Laporan/analitik = supervisor-only di sisi POS (admin web tetap penuh).
+		r.Use(authcontract.RequireStaffSupervisorOrAdmin)
 
 		r.Get("/dashboard", h.dashboard)
 		r.Get("/sales", h.sales)

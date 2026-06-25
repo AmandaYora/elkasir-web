@@ -3,6 +3,8 @@ import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye, Upload, X } from "lu
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { MoneyInput } from "@/shared/components/ui/money-input";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { Label } from "@/shared/components/ui/label";
 import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -26,6 +28,7 @@ import { productsService } from "@/modules/products/services/products.service";
 import { mediaService } from "@/shared/services/media.service";
 import { DEFAULT_PRODUCT_IMAGE_URL } from "@/shared/lib/image";
 import { productSchema } from "@/modules/products/schemas/product.schema";
+import { zodFieldErrors } from "@/shared/lib/form";
 import { ProductStatusBadge } from "@/modules/products/components/ProductStatusBadge";
 import type { Product, ProductInput, ProductStatus } from "@/modules/products/types/product.types";
 
@@ -390,13 +393,23 @@ function ProductForm({
   });
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const upd = (patch: Partial<ProductInput>) => {
+    setForm((f) => ({ ...f, ...patch }));
+    setErrors((e) => {
+      const next = { ...e };
+      for (const k of Object.keys(patch)) delete next[k];
+      return next;
+    });
+  };
 
   const submit = async () => {
     const parsed = productSchema.safeParse(form);
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
+    setErrors({});
     setBusy(true);
     try {
       if (editing) await productsService.update(editing.id, form);
@@ -416,18 +429,21 @@ function ProductForm({
         <Label>Nama produk</Label>
         <Input
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => upd({ name: e.target.value })}
           placeholder="Nasi Ayam"
+          aria-invalid={!!errors.name}
         />
+        <FieldError msg={errors.name} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
           <Label>SKU</Label>
           <Input
             value={form.sku}
-            onChange={(e) => setForm({ ...form, sku: e.target.value })}
+            onChange={(e) => upd({ sku: e.target.value })}
             placeholder="SKU-1234"
           />
+          <FieldError msg={errors.sku} />
         </div>
         <div className="grid gap-2">
           <Label>Kategori</Label>
@@ -451,28 +467,23 @@ function ProductForm({
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div className="grid gap-2">
-          <Label>Harga</Label>
-          <Input
-            type="number"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: +e.target.value })}
-          />
+          <Label>Harga (Rp)</Label>
+          <MoneyInput value={form.price} onChange={(n) => upd({ price: n })} />
+          <FieldError msg={errors.price} />
         </div>
         <div className="grid gap-2">
-          <Label>Modal</Label>
-          <Input
-            type="number"
-            value={form.cost}
-            onChange={(e) => setForm({ ...form, cost: +e.target.value })}
-          />
+          <Label>Modal (Rp)</Label>
+          <MoneyInput value={form.cost} onChange={(n) => upd({ cost: n })} />
+          <FieldError msg={errors.cost} />
         </div>
         <div className="grid gap-2">
           <Label>Stok</Label>
           <Input
             type="number"
             value={form.stock}
-            onChange={(e) => setForm({ ...form, stock: +e.target.value })}
+            onChange={(e) => upd({ stock: Math.trunc(+e.target.value) })}
           />
+          <FieldError msg={errors.stock} />
         </div>
       </div>
       <div className="grid gap-2">

@@ -119,8 +119,11 @@ func (s *Service) Close(ctx context.Context, p authcontract.Principal, shiftID s
 	variance := shareddomain.Variance(in.ActualCash, expected)
 
 	policy := s.controlPolicy(ctx, storeID)
-	if policy.VarianceNeedsApproval(variance) && strings.TrimSpace(in.CloseApprovedBy) == "" {
-		return DTO{}, httpx.Forbidden("Selisih kas melebihi toleransi; butuh persetujuan supervisor (closeApprovedBy).")
+	// Selisih kas di atas toleransi butuh persetujuan supervisor — kecuali yang menutup SUDAH
+	// supervisor/admin (override otomatis). PIN supervisor diverifikasi di klien; namanya
+	// tercatat di closeApprovedBy (audit).
+	if policy.VarianceNeedsApproval(variance) && !p.IsSupervisorOrAdmin() && strings.TrimSpace(in.CloseApprovedBy) == "" {
+		return DTO{}, httpx.Forbidden("Selisih kas melebihi toleransi; butuh persetujuan supervisor (PIN).")
 	}
 
 	n, err := s.repo.Close(ctx, infrastructure.CloseParams{

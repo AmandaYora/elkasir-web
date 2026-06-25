@@ -17,6 +17,7 @@ var defaultSettings = sqlcgen.Setting{
 	CashVarianceTolerance: 5000,
 	FeatureSelfOrder:      true,
 	FeatureQris:           true,
+	FeaturePayAtCashier:   true,
 	TaxEnabled:            false,
 	TaxPercent:            11,
 	ServicePercent:        2,

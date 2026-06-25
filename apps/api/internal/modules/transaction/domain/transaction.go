@@ -15,6 +15,7 @@ type ListFilter struct {
 	Source        string
 	PaymentMethod string
 	Search        string
+	CashierID     string // bila diisi, batasi ke satu kasir (ditegakkan untuk staf kasir)
 	From          *time.Time
 	To            *time.Time
 	Limit         int

@@ -11,7 +11,7 @@ import (
 
 const getSettingsByStore = `-- name: GetSettingsByStore :one
 
-SELECT id, store_id, max_discount_percent, max_operational_expense, cash_variance_tolerance, feature_self_order, feature_qris, created_at, updated_at, tax_enabled, tax_percent, service_percent FROM settings WHERE store_id = ? LIMIT 1
+SELECT id, store_id, max_discount_percent, max_operational_expense, cash_variance_tolerance, feature_self_order, feature_qris, created_at, updated_at, tax_enabled, tax_percent, service_percent, feature_pay_at_cashier FROM settings WHERE store_id = ? LIMIT 1
 `
 
 // Tabel settings dimiliki modul `settings`. Pembaca lintas-modul memakai kontrak
@@ -32,6 +32,7 @@ func (q *Queries) GetSettingsByStore(ctx context.Context, storeID string) (Setti
 		&i.TaxEnabled,
 		&i.TaxPercent,
 		&i.ServicePercent,
+		&i.FeaturePayAtCashier,
 	)
 	return i, err
 }
@@ -39,14 +40,15 @@ func (q *Queries) GetSettingsByStore(ctx context.Context, storeID string) (Setti
 const upsertSettings = `-- name: UpsertSettings :exec
 INSERT INTO settings (
   id, store_id, max_discount_percent, max_operational_expense, cash_variance_tolerance,
-  feature_self_order, feature_qris, tax_enabled, tax_percent, service_percent
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  feature_self_order, feature_qris, feature_pay_at_cashier, tax_enabled, tax_percent, service_percent
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
   max_discount_percent    = VALUES(max_discount_percent),
   max_operational_expense = VALUES(max_operational_expense),
   cash_variance_tolerance = VALUES(cash_variance_tolerance),
   feature_self_order      = VALUES(feature_self_order),
   feature_qris            = VALUES(feature_qris),
+  feature_pay_at_cashier  = VALUES(feature_pay_at_cashier),
   tax_enabled             = VALUES(tax_enabled),
   tax_percent             = VALUES(tax_percent),
   service_percent         = VALUES(service_percent)
@@ -60,6 +62,7 @@ type UpsertSettingsParams struct {
 	CashVarianceTolerance int64  `json:"cashVarianceTolerance"`
 	FeatureSelfOrder      bool   `json:"featureSelfOrder"`
 	FeatureQris           bool   `json:"featureQris"`
+	FeaturePayAtCashier   bool   `json:"featurePayAtCashier"`
 	TaxEnabled            bool   `json:"taxEnabled"`
 	TaxPercent            int32  `json:"taxPercent"`
 	ServicePercent        int32  `json:"servicePercent"`
@@ -74,6 +77,7 @@ func (q *Queries) UpsertSettings(ctx context.Context, arg UpsertSettingsParams) 
 		arg.CashVarianceTolerance,
 		arg.FeatureSelfOrder,
 		arg.FeatureQris,
+		arg.FeaturePayAtCashier,
 		arg.TaxEnabled,
 		arg.TaxPercent,
 		arg.ServicePercent,

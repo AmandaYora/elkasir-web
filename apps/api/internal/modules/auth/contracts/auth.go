@@ -26,6 +26,13 @@ type Principal struct {
 	Role      string
 }
 
+// IsSupervisorOrAdmin reports whether the principal is privileged enough to perform
+// (or self-approve) supervisor-gated actions: any admin web user, or a staff supervisor.
+// A plain cashier returns false and must obtain a supervisor's approval (PIN).
+func (p Principal) IsSupervisorOrAdmin() bool {
+	return p.Actor == ActorAdmin || (p.Actor == ActorStaff && p.Role == "supervisor")
+}
+
 // Authenticator validates the bearer token and injects the principal into the context.
 // The concrete implementation lives in the auth module's infrastructure.
 type Authenticator interface {
@@ -65,6 +72,25 @@ func RequireActor(actor Actor) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// RequireStaffSupervisorOrAdmin gates supervisor-only POS surfaces: any admin web user is
+// allowed (the web dashboard manages everything), but a staff (POS) principal must be a
+// supervisor — a plain cashier is rejected (403). Use for cash movements, reports, and other
+// "kasir = kasir saja, sisanya supervisor" endpoints.
+func RequireStaffSupervisorOrAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p, ok := PrincipalFrom(r.Context())
+		if !ok {
+			httpx.Error(w, httpx.Unauthorized("Autentikasi diperlukan."))
+			return
+		}
+		if !p.IsSupervisorOrAdmin() {
+			httpx.Error(w, httpx.Forbidden("Hanya supervisor yang dapat mengakses fitur ini."))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RequireRole rejects (403) when the principal's role is not in the allowed set.

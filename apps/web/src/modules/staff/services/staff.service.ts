@@ -9,5 +9,7 @@ export const staffService = {
   update: (id: string, body: StaffUpdateInput) => api.put<Staff>(`${endpoints.staff}/${id}`, body),
   resetPassword: (id: string, password: string) =>
     api.post<void>(`${endpoints.staff}/${id}/reset-password`, { password }),
+  // Set/clear a supervisor's approval PIN (empty string clears it). Supervisors only.
+  setPin: (id: string, pin: string) => api.put<void>(`${endpoints.staff}/${id}/pin`, { pin }),
   remove: (id: string) => api.del(`${endpoints.staff}/${id}`),
 };

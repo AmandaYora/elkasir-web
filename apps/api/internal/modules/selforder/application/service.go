@@ -123,6 +123,15 @@ type MenuDTO struct {
 	Table      TableDTO         `json:"table"`
 	Categories []string         `json:"categories"`
 	Products   []MenuProductDTO `json:"products"`
+	// Flag fitur toko (dari settings) agar halaman pelanggan tahu metode bayar mana yang
+	// ditampilkan. featureSelfOrder=false → halaman menampilkan state "ditutup".
+	FeatureSelfOrder    bool `json:"featureSelfOrder"`
+	FeatureQris         bool `json:"featureQris"`
+	FeaturePayAtCashier bool `json:"featurePayAtCashier"`
+	// Persen layanan & PPN agar rincian biaya bisa dijelaskan ke pelanggan (mis. "Layanan (2%)").
+	ServicePercent int32 `json:"servicePercent"`
+	TaxPercent     int32 `json:"taxPercent"`
+	TaxEnabled     bool  `json:"taxEnabled"`
 }
 
 type PlaceResult struct {
@@ -171,6 +180,10 @@ func (s *Service) Menu(ctx context.Context, tableCode string) (MenuDTO, error) {
 	if err != nil {
 		return MenuDTO{}, err
 	}
+	cfg, err := s.settings.Get(ctx, t.StoreID)
+	if err != nil {
+		return MenuDTO{}, err
+	}
 
 	seen := map[string]bool{}
 	cats := []string{}
@@ -183,9 +196,15 @@ func (s *Service) Menu(ctx context.Context, tableCode string) (MenuDTO, error) {
 		items = append(items, MenuProductDTO{ID: p.ID, Name: p.Name, Category: p.Category, Price: p.Price, ImageURL: p.ImageURL})
 	}
 	return MenuDTO{
-		Table:      TableDTO{Code: t.Code, Name: t.Name, Area: t.Area, Status: t.Status},
-		Categories: cats,
-		Products:   items,
+		Table:               TableDTO{Code: t.Code, Name: t.Name, Area: t.Area, Status: t.Status},
+		Categories:          cats,
+		Products:            items,
+		FeatureSelfOrder:    cfg.FeatureSelfOrder,
+		FeatureQris:         cfg.FeatureQris,
+		FeaturePayAtCashier: cfg.FeaturePayAtCashier,
+		ServicePercent:      cfg.ServicePercent,
+		TaxPercent:          cfg.TaxPercent,
+		TaxEnabled:          cfg.TaxEnabled,
 	}, nil
 }
 
@@ -204,12 +223,17 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 	if in.PaymentMethod != "qris" && in.PaymentMethod != "cash" {
 		return PlaceResult{}, httpx.Validation("Metode pembayaran harus 'qris' atau 'cash'.")
 	}
+	// Tegakkan toggle admin: self-order aktif + metode bayar yang diminta memang diizinkan.
+	cfg, err := s.guardSelfOrder(ctx, t.StoreID, in.PaymentMethod)
+	if err != nil {
+		return PlaceResult{}, err
+	}
 	// Snapshot harga dari produk + hitung rincian biaya (service 2% + PPN + gateway utk QRIS).
 	items, subtotal, err := s.resolveItems(ctx, t.StoreID, in.Items)
 	if err != nil {
 		return PlaceResult{}, err
 	}
-	bd, err := s.priceQuote(ctx, t.StoreID, in.PaymentMethod, subtotal)
+	bd, err := s.priceQuote(ctx, in.PaymentMethod, subtotal, cfg)
 	if err != nil {
 		return PlaceResult{}, err
 	}
@@ -269,11 +293,15 @@ func (s *Service) Quote(ctx context.Context, tableCode string, in PlaceInput) (Q
 	if in.PaymentMethod != "qris" && in.PaymentMethod != "cash" {
 		return QuoteDTO{}, httpx.Validation("Metode pembayaran harus 'qris' atau 'cash'.")
 	}
+	cfg, err := s.guardSelfOrder(ctx, t.StoreID, in.PaymentMethod)
+	if err != nil {
+		return QuoteDTO{}, err
+	}
 	_, subtotal, err := s.resolveItems(ctx, t.StoreID, in.Items)
 	if err != nil {
 		return QuoteDTO{}, err
 	}
-	bd, err := s.priceQuote(ctx, t.StoreID, in.PaymentMethod, subtotal)
+	bd, err := s.priceQuote(ctx, in.PaymentMethod, subtotal, cfg)
 	if err != nil {
 		return QuoteDTO{}, err
 	}
@@ -311,13 +339,30 @@ func (s *Service) resolveItems(ctx context.Context, storeID string, in []PlaceIt
 	return items, subtotal, nil
 }
 
-// priceQuote menghitung breakdown biaya dari subtotal sesuai settings toko. Biaya gateway
-// hanya untuk QRIS (di-quote live dari provider); cash → 0.
-func (s *Service) priceQuote(ctx context.Context, storeID, paymentMethod string, subtotal int64) (shareddomain.Breakdown, error) {
+// guardSelfOrder memuat settings toko & memastikan self-order beserta metode bayar yang
+// diminta memang diaktifkan admin. Mengembalikan settings agar pemanggil tak fetch ulang.
+// Catatan: featureQris adalah toggle BISNIS admin — terpisah dari kesiapan teknis gateway
+// (payments.Enabled()); QRIS tetap boleh aktif dalam mode simulasi saat gateway belum diset.
+func (s *Service) guardSelfOrder(ctx context.Context, storeID, paymentMethod string) (settingsclient.Settings, error) {
 	cfg, err := s.settings.Get(ctx, storeID)
 	if err != nil {
-		return shareddomain.Breakdown{}, err
+		return settingsclient.Settings{}, err
 	}
+	if !cfg.FeatureSelfOrder {
+		return cfg, httpx.Unprocessable("Pemesanan mandiri sedang tidak tersedia.")
+	}
+	if paymentMethod == "qris" && !cfg.FeatureQris {
+		return cfg, httpx.Unprocessable("Pembayaran QRIS sedang tidak tersedia.")
+	}
+	if paymentMethod == "cash" && !cfg.FeaturePayAtCashier {
+		return cfg, httpx.Unprocessable("Pembayaran di kasir sedang tidak tersedia.")
+	}
+	return cfg, nil
+}
+
+// priceQuote menghitung breakdown biaya dari subtotal sesuai settings toko. Biaya gateway
+// hanya untuk QRIS (di-quote live dari provider); cash → 0.
+func (s *Service) priceQuote(ctx context.Context, paymentMethod string, subtotal int64, cfg settingsclient.Settings) (shareddomain.Breakdown, error) {
 	var gatewayFee int64
 	if paymentMethod == "qris" {
 		base := shareddomain.PreGatewayBase(subtotal, 0, cfg.ServicePercent, cfg.TaxPercent, cfg.TaxEnabled)

@@ -5,6 +5,7 @@ export interface Settings {
   cashVarianceTolerance: number;
   featureSelfOrder: boolean;
   featureQris: boolean;
+  featurePayAtCashier: boolean;
   taxEnabled: boolean;
   taxPercent: number;
   servicePercent: number;

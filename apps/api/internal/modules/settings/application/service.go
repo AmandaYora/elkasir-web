@@ -24,6 +24,7 @@ type DTO struct {
 	CashVarianceTolerance int64 `json:"cashVarianceTolerance"`
 	FeatureSelfOrder      bool  `json:"featureSelfOrder"`
 	FeatureQris           bool  `json:"featureQris"`
+	FeaturePayAtCashier   bool  `json:"featurePayAtCashier"`
 	TaxEnabled            bool  `json:"taxEnabled"`
 	TaxPercent            int32 `json:"taxPercent"`
 	ServicePercent        int32 `json:"servicePercent"`
@@ -36,6 +37,7 @@ type Input struct {
 	CashVarianceTolerance int64 `json:"cashVarianceTolerance"`
 	FeatureSelfOrder      bool  `json:"featureSelfOrder"`
 	FeatureQris           bool  `json:"featureQris"`
+	FeaturePayAtCashier   bool  `json:"featurePayAtCashier"`
 	TaxEnabled            bool  `json:"taxEnabled"`
 	TaxPercent            int32 `json:"taxPercent"`
 	ServicePercent        int32 `json:"servicePercent"`
@@ -62,6 +64,11 @@ func (s *Service) Update(ctx context.Context, storeID string, in Input) (DTO, er
 	if in.MaxOperationalExpense < 0 || in.CashVarianceTolerance < 0 {
 		return DTO{}, httpx.Validation("Nilai ambang tidak boleh negatif.")
 	}
+	// Saat self-order aktif, minimal satu metode pembayaran harus aktif — kalau keduanya
+	// mati, pelanggan tak punya cara membayar (self-order jadi mubazir).
+	if in.FeatureSelfOrder && !in.FeatureQris && !in.FeaturePayAtCashier {
+		return DTO{}, httpx.Validation("Minimal satu metode pembayaran (QRIS atau bayar di kasir) harus aktif saat self-order aktif.")
+	}
 
 	// Pertahankan id baris yang ada (upsert membuat baris baru bila belum ada).
 	cur, err := s.repo.Get(ctx, storeID)
@@ -80,6 +87,7 @@ func (s *Service) Update(ctx context.Context, storeID string, in Input) (DTO, er
 		CashVarianceTolerance: in.CashVarianceTolerance,
 		FeatureSelfOrder:      in.FeatureSelfOrder,
 		FeatureQris:           in.FeatureQris,
+		FeaturePayAtCashier:   in.FeaturePayAtCashier,
 		TaxEnabled:            in.TaxEnabled,
 		TaxPercent:            in.TaxPercent,
 		ServicePercent:        in.ServicePercent,
@@ -96,6 +104,7 @@ func toDTO(st sqlcgen.Setting) DTO {
 		CashVarianceTolerance: st.CashVarianceTolerance,
 		FeatureSelfOrder:      st.FeatureSelfOrder,
 		FeatureQris:           st.FeatureQris,
+		FeaturePayAtCashier:   st.FeaturePayAtCashier,
 		TaxEnabled:            st.TaxEnabled,
 		TaxPercent:            st.TaxPercent,
 		ServicePercent:        st.ServicePercent,

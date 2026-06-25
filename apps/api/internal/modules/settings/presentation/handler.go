@@ -37,6 +37,11 @@ func (h *Handler) Routes(r chi.Router) {
 	// Konfigurasi harga untuk POS (layanan % + PPN). Read-only, boleh diakses staf kasir
 	// (bukan hanya admin) agar app POS menghitung total konsisten dengan server.
 	r.With(h.auth.Authenticate).Get("/pos/pricing", h.posPricing)
+
+	// Konfigurasi POS lengkap (pricing + feature flags + ambang kontrol) dalam SATU payload
+	// yang ditarik POS saat login & refresh. Server yang memutuskan flag; klien menyembunyikan
+	// fitur yang dimatikan. Menggantikan /pos/pricing (yang tetap dipertahankan sbg alias).
+	r.With(h.auth.Authenticate).Get("/pos/config", h.posConfig)
 }
 
 // PosPricing adalah subset settings yang dibutuhkan POS untuk menghitung breakdown.
@@ -44,6 +49,26 @@ type PosPricing struct {
 	ServicePercent int32 `json:"servicePercent"`
 	TaxPercent     int32 `json:"taxPercent"`
 	TaxEnabled     bool  `json:"taxEnabled"`
+}
+
+// PosConfig adalah konfigurasi yang ditarik POS (staf/admin) untuk mengatur dirinya:
+// harga (layanan/PPN), fitur yang aktif (untuk hide di klien), dan ambang persetujuan.
+type PosConfig struct {
+	Pricing struct {
+		ServicePercent int32 `json:"servicePercent"`
+		TaxPercent     int32 `json:"taxPercent"`
+		TaxEnabled     bool  `json:"taxEnabled"`
+	} `json:"pricing"`
+	Features struct {
+		Qris         bool `json:"qris"`
+		SelfOrder    bool `json:"selfOrder"`
+		PayAtCashier bool `json:"payAtCashier"`
+	} `json:"features"`
+	Thresholds struct {
+		MaxDiscountPercent    int32 `json:"maxDiscountPercent"`
+		MaxOperationalExpense int64 `json:"maxOperationalExpense"`
+		CashVarianceTolerance int64 `json:"cashVarianceTolerance"`
+	} `json:"thresholds"`
 }
 
 func (h *Handler) posPricing(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +82,25 @@ func (h *Handler) posPricing(w http.ResponseWriter, r *http.Request) {
 		TaxPercent:     dto.TaxPercent,
 		TaxEnabled:     dto.TaxEnabled,
 	})
+}
+
+func (h *Handler) posConfig(w http.ResponseWriter, r *http.Request) {
+	dto, err := h.svc.Get(r.Context(), h.storeID(r))
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	var cfg PosConfig
+	cfg.Pricing.ServicePercent = dto.ServicePercent
+	cfg.Pricing.TaxPercent = dto.TaxPercent
+	cfg.Pricing.TaxEnabled = dto.TaxEnabled
+	cfg.Features.Qris = dto.FeatureQris
+	cfg.Features.SelfOrder = dto.FeatureSelfOrder
+	cfg.Features.PayAtCashier = dto.FeaturePayAtCashier
+	cfg.Thresholds.MaxDiscountPercent = dto.MaxDiscountPercent
+	cfg.Thresholds.MaxOperationalExpense = dto.MaxOperationalExpense
+	cfg.Thresholds.CashVarianceTolerance = dto.CashVarianceTolerance
+	httpx.OK(w, cfg)
 }
 
 func (h *Handler) storeID(r *http.Request) string {

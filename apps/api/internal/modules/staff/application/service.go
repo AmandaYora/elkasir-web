@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/elkasir/api/internal/modules/staff/domain"
@@ -27,6 +28,7 @@ type DTO struct {
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
 	Status    string    `json:"status"`
+	HasPin    bool      `json:"hasPin"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -38,6 +40,7 @@ func toDTO(s domain.Staff) DTO {
 		Email:     s.Email,
 		Role:      s.Role,
 		Status:    s.Status,
+		HasPin:    s.HasPin,
 		CreatedAt: s.CreatedAt,
 	}
 }
@@ -120,4 +123,51 @@ func (s *Service) Delete(ctx context.Context, storeID, sid string) error {
 		return err
 	}
 	return s.repo.Delete(ctx, storeID, sid)
+}
+
+// SupervisorRef adalah identitas supervisor penyetuju (dicatat sebagai approver pada audit).
+type SupervisorRef struct {
+	ID   string `json:"approvedById"`
+	Name string `json:"approvedByName"`
+}
+
+// SetPin menyetel (atau, bila pin kosong, menghapus) PIN approve-in-place. Hanya untuk staf
+// ber-role supervisor.
+func (s *Service) SetPin(ctx context.Context, storeID, sid, pin string) error {
+	st, err := s.Get(ctx, storeID, sid)
+	if err != nil {
+		return err
+	}
+	if st.Role != "supervisor" {
+		return httpx.Validation("PIN hanya untuk staf supervisor.")
+	}
+	if strings.TrimSpace(pin) == "" { // kosongkan PIN
+		return s.repo.SetPin(ctx, storeID, sid, "")
+	}
+	if err := domain.ValidatePIN(pin); err != nil {
+		return err
+	}
+	hash, err := security.HashPassword(strings.TrimSpace(pin))
+	if err != nil {
+		return err
+	}
+	return s.repo.SetPin(ctx, storeID, sid, hash)
+}
+
+// VerifySupervisorPIN mencocokkan PIN dengan supervisor aktif di toko; mengembalikan identitas
+// supervisor pencocok (untuk dicatat sebagai approver), atau Unauthorized bila tak ada yang cocok.
+func (s *Service) VerifySupervisorPIN(ctx context.Context, storeID, pin string) (SupervisorRef, error) {
+	if strings.TrimSpace(pin) == "" {
+		return SupervisorRef{}, httpx.Unauthorized("PIN supervisor tidak valid.")
+	}
+	rows, err := s.repo.ListSupervisorPins(ctx, storeID)
+	if err != nil {
+		return SupervisorRef{}, err
+	}
+	for _, row := range rows {
+		if security.VerifyPassword(row.PinHash, strings.TrimSpace(pin)) {
+			return SupervisorRef{ID: row.ID, Name: row.Name}, nil
+		}
+	}
+	return SupervisorRef{}, httpx.Unauthorized("PIN supervisor tidak valid.")
 }

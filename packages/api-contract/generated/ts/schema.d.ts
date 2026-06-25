@@ -283,6 +283,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/staff/{id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PathId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set/hapus PIN persetujuan supervisor (owner/admin; hanya untuk role supervisor) */
+        put: operations["setStaffPin"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin-users": {
         parameters: {
             query?: never;
@@ -703,6 +722,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pos/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Konfigurasi POS lengkap (harga + fitur + ambang) — admin atau staf
+         * @description Satu payload yang ditarik aplikasi POS saat login & refresh-on-resume. Server yang memutuskan flag fitur; klien menyembunyikan fitur yang dimatikan (hide, bukan disable).
+         */
+        get: operations["getPosConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pos/approvals/verify-pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verifikasi PIN supervisor (staf POS, rate-limited) untuk approve-in-place */
+        post: operations["verifySupervisorPin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -969,6 +1025,8 @@ export interface components {
             role: "cashier" | "supervisor";
             /** @enum {string} */
             status: "active" | "inactive";
+            /** @description Supervisor approval PIN is set (admin can spot who still needs one). */
+            hasPin: boolean;
             /** Format: date-time */
             createdAt: string;
         };
@@ -1366,6 +1424,33 @@ export interface components {
             taxPercent: number;
             taxEnabled: boolean;
         };
+        PosConfig: {
+            pricing: {
+                /** Format: int32 */
+                servicePercent: number;
+                /** Format: int32 */
+                taxPercent: number;
+                taxEnabled: boolean;
+            };
+            features: {
+                /** @description Metode QRIS aktif (klien menyembunyikan bila false). */
+                qris: boolean;
+                selfOrder: boolean;
+                payAtCashier: boolean;
+            };
+            thresholds: {
+                /** Format: int32 */
+                maxDiscountPercent: number;
+                /** Format: int64 */
+                maxOperationalExpense: number;
+                /** Format: int64 */
+                cashVarianceTolerance: number;
+            };
+        };
+        SupervisorApprovalRef: {
+            approvedById: string;
+            approvedByName: string;
+        };
         Settings: {
             /** Format: int32 */
             maxDiscountPercent: number;
@@ -1374,7 +1459,10 @@ export interface components {
             /** Format: int64 */
             cashVarianceTolerance: number;
             featureSelfOrder: boolean;
+            /** @description Tampilkan metode bayar QRIS pada self-order. */
             featureQris: boolean;
+            /** @description Tampilkan metode bayar di kasir (tunai) pada self-order. */
+            featurePayAtCashier: boolean;
             /** @description Aktifkan PPN. */
             taxEnabled: boolean;
             /**
@@ -1406,6 +1494,23 @@ export interface components {
             table: components["schemas"]["SelfOrderTable"];
             categories: string[];
             products: components["schemas"]["SelfOrderMenuProduct"][];
+            /** @description Self-order aktif; false → halaman menampilkan state ditutup. */
+            featureSelfOrder: boolean;
+            /** @description Metode bayar QRIS tersedia untuk pelanggan. */
+            featureQris: boolean;
+            /** @description Metode bayar di kasir tersedia untuk pelanggan. */
+            featurePayAtCashier: boolean;
+            /**
+             * Format: int32
+             * @description Persen biaya layanan (untuk label rincian, mis. 2).
+             */
+            servicePercent: number;
+            /**
+             * Format: int32
+             * @description Persen PPN (untuk label rincian, mis. 11).
+             */
+            taxPercent: number;
+            taxEnabled: boolean;
         };
         SelfOrderStatus: {
             id: string;
@@ -2284,6 +2389,37 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    setStaffPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PathId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description PIN 4–6 digit; string kosong menghapus PIN. */
+                    pin: string;
+                };
+            };
+        };
+        responses: {
+            /** @description PIN disimpan/dihapus */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listAdminUsers: {
         parameters: {
             query?: never;
@@ -3121,6 +3257,63 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getPosConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Konfigurasi POS */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosConfig"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    verifySupervisorPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description PIN 4–6 digit */
+                    pin: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Identitas supervisor penyetuju */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorApprovalRef"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Terlalu banyak percobaan (rate limit) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getSettings: {

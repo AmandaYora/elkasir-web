@@ -1005,6 +1005,7 @@ type Setting struct {
 	TaxEnabled            bool      `json:"taxEnabled"`
 	TaxPercent            int32     `json:"taxPercent"`
 	ServicePercent        int32     `json:"servicePercent"`
+	FeaturePayAtCashier   bool      `json:"featurePayAtCashier"`
 }
 
 type Shift struct {
@@ -1041,6 +1042,7 @@ type Staff struct {
 	Status       StaffStatus    `json:"status"`
 	CreatedAt    time.Time      `json:"createdAt"`
 	UpdatedAt    time.Time      `json:"updatedAt"`
+	PinHash      sql.NullString `json:"pinHash"`
 }
 
 type Store struct {

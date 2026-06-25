@@ -150,7 +150,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getStaffByID = `-- name: GetStaffByID :one
-SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at FROM staff WHERE id = ? LIMIT 1
+SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at, pin_hash FROM staff WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetStaffByID(ctx context.Context, id string) (Staff, error) {
@@ -167,12 +167,13 @@ func (q *Queries) GetStaffByID(ctx context.Context, id string) (Staff, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PinHash,
 	)
 	return i, err
 }
 
 const getStaffByUsername = `-- name: GetStaffByUsername :one
-SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at FROM staff WHERE username = ? LIMIT 1
+SELECT id, store_id, name, username, email, password_hash, role, status, created_at, updated_at, pin_hash FROM staff WHERE username = ? LIMIT 1
 `
 
 func (q *Queries) GetStaffByUsername(ctx context.Context, username string) (Staff, error) {
@@ -189,6 +190,7 @@ func (q *Queries) GetStaffByUsername(ctx context.Context, username string) (Staf
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PinHash,
 	)
 	return i, err
 }

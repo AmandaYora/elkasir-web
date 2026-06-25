@@ -70,11 +70,12 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, in domai
 		return DTO{}, err
 	}
 
-	// Kebijakan kontrol biaya operasional (di server, bukan klien).
+	// Kebijakan kontrol biaya operasional (di server, bukan klien). Supervisor/admin yang
+	// menjalankan langsung memenuhi syarat persetujuan (override otomatis).
 	if in.Type == domain.TypeExpense {
 		policy := s.controlPolicy(ctx, storeID)
-		if policy.ExpenseNeedsApproval(in.Amount) && in.TrimmedApprovedBy() == "" {
-			return DTO{}, httpx.Forbidden("Biaya melebihi plafon; butuh persetujuan supervisor (approvedBy).")
+		if policy.ExpenseNeedsApproval(in.Amount) && !p.IsSupervisorOrAdmin() && in.TrimmedApprovedBy() == "" {
+			return DTO{}, httpx.Forbidden("Biaya melebihi plafon; butuh persetujuan supervisor (PIN).")
 		}
 	}
 

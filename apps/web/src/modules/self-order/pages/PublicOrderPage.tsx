@@ -16,6 +16,7 @@ import {
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { formatIDR } from "@/shared/lib/formatter";
+import { DEFAULT_PRODUCT_IMAGE_URL } from "@/shared/lib/image";
 import { ApiError } from "@/shared/types/api";
 import {
   QrisPaymentPanel,
@@ -75,6 +76,11 @@ export default function PublicOrderPage() {
   const products = menu?.products ?? [];
   const categories = useMemo(() => ["Semua", ...(menu?.categories ?? [])], [menu]);
 
+  // Flag metode bayar dari settings toko (default ON agar API lama tetap kompatibel).
+  const selfOrderEnabled = menu?.featureSelfOrder ?? true;
+  const qrisEnabled = menu?.featureQris ?? true;
+  const cashierEnabled = menu?.featurePayAtCashier ?? true;
+
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
     return products.filter(
@@ -105,11 +111,14 @@ export default function PublicOrderPage() {
       return;
     }
     let active = true;
+    // Tampilkan rincian utk metode yang aktif: QRIS (termasuk biaya gateway) bila tersedia,
+    // jika tidak, jalur tunai (tanpa biaya gateway).
+    const quoteMethod = qrisEnabled ? "qris" : "cash";
     const timer = setTimeout(() => {
       publicOrderService
         .quote(code, {
           items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty, note: "" })),
-          paymentMethod: "qris",
+          paymentMethod: quoteMethod,
         })
         .then((q) => active && setQuote(q))
         .catch(() => active && setQuote(null));
@@ -118,7 +127,7 @@ export default function PublicOrderPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [step, lines, code]);
+  }, [step, lines, code, qrisEnabled]);
 
   const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
   const dec = (id: string) =>
@@ -222,6 +231,20 @@ export default function PublicOrderPage() {
     );
   }
 
+  if (!selfOrderEnabled) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-muted text-muted">
+          <Utensils className="h-6 w-6" />
+        </div>
+        <h1 className="text-lg font-semibold">Pemesanan mandiri ditutup</h1>
+        <p className="text-sm text-muted">
+          Pemesanan via QR sedang tidak tersedia untuk saat ini. Silakan pesan langsung ke staf.
+        </p>
+      </div>
+    );
+  }
+
   const OrderSummary = () => {
     if (!placed) return null;
     const o = placed.order;
@@ -267,6 +290,26 @@ export default function PublicOrderPage() {
             </div>
           </div>
         </div>
+        {/* Indikator 3 langkah: orientasi cepat untuk pelanggan awam (Menu → Periksa → Bayar). */}
+        <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] font-medium">
+          {["Menu", "Periksa", "Bayar"].map((label, i) => {
+            const current = step === "menu" ? 0 : step === "review" ? 1 : 2;
+            const active = current >= i;
+            return (
+              <div key={label} className="flex items-center gap-1.5">
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                    active ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span className={active ? "text-text" : "text-muted"}>{label}</span>
+                {i < 2 && <span className="h-px w-4 bg-border" />}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {step === "menu" && (
@@ -306,9 +349,18 @@ export default function PublicOrderPage() {
                   key={p.id}
                   className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3"
                 >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
-                    {p.name.slice(0, 2)}
-                  </div>
+                  <img
+                    src={p.imageUrl || DEFAULT_PRODUCT_IMAGE_URL}
+                    alt={p.name}
+                    loading="lazy"
+                    onError={(e) => {
+                      // Hindari loop bila gambar default sendiri gagal dimuat.
+                      if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL) {
+                        e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
+                      }
+                    }}
+                    className="h-12 w-12 shrink-0 rounded-lg bg-surface-muted object-cover"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold">{p.name}</div>
                     <div className="text-xs text-muted">{p.category}</div>
@@ -431,6 +483,8 @@ export default function PublicOrderPage() {
               serviceLine={quote.serviceLine}
               tax={quote.tax}
               total={quote.total}
+              servicePercent={menu.servicePercent}
+              taxPercent={menu.taxEnabled ? menu.taxPercent : undefined}
             />
           ) : (
             <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
@@ -440,41 +494,47 @@ export default function PublicOrderPage() {
           )}
 
           <div className="space-y-2">
-            <div className="px-1 text-sm font-medium">Pilih cara pembayaran</div>
+            <div className="px-1 text-sm font-medium">
+              {qrisEnabled && cashierEnabled ? "Pilih cara pembayaran" : "Cara pembayaran"}
+            </div>
             <p className="px-1 text-xs text-muted">
               Layanan & pajak (bila ada) ditambahkan ke total. Biaya QRIS hanya berlaku untuk
               pembayaran QRIS.
             </p>
-            <button
-              onClick={() => place("qris")}
-              disabled={placing}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <QrCode className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold">Bayar QRIS</div>
-                <div className="text-xs text-muted">
-                  Scan QR & bayar dari ponsel. Pesanan langsung masuk setelah lunas.
+            {qrisEnabled && (
+              <button
+                onClick={() => place("qris")}
+                disabled={placing}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <QrCode className="h-5 w-5" />
                 </div>
-              </div>
-            </button>
-            <button
-              onClick={() => place("cash")}
-              disabled={placing}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <ScanLine className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold">Bayar di kasir</div>
-                <div className="text-xs text-muted">
-                  Dapat barcode, tunjukkan ke kasir, lalu bayar tunai.
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">Bayar QRIS</div>
+                  <div className="text-xs text-muted">
+                    Scan QR & bayar dari ponsel. Pesanan langsung masuk setelah lunas.
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
+            {cashierEnabled && (
+              <button
+                onClick={() => place("cash")}
+                disabled={placing}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ScanLine className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">Bayar di kasir</div>
+                  <div className="text-xs text-muted">
+                    Dapat barcode, tunjukkan ke kasir, lalu bayar tunai.
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -505,6 +565,8 @@ export default function PublicOrderPage() {
               serviceLine={placed.order.serviceLine}
               tax={placed.order.tax}
               total={placed.order.total}
+              servicePercent={menu.servicePercent}
+              taxPercent={menu.taxEnabled ? menu.taxPercent : undefined}
             />
           )}
 
@@ -534,6 +596,8 @@ export default function PublicOrderPage() {
             serviceLine={placed.order.serviceLine}
             tax={placed.order.tax}
             total={placed.order.total}
+            servicePercent={menu.servicePercent}
+            taxPercent={menu.taxEnabled ? menu.taxPercent : undefined}
           />
           <OrderSummary />
           <p className="text-center text-xs text-muted">

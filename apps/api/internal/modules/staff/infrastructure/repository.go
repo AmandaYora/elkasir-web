@@ -84,6 +84,31 @@ func (r *Repo) UpdatePassword(ctx context.Context, storeID, id, passwordHash str
 	return r.q.UpdateStaffPassword(ctx, sqlcgen.UpdateStaffPasswordParams{PasswordHash: passwordHash, ID: id, StoreID: storeID})
 }
 
+// SetPin menyimpan hash PIN supervisor (atau mengosongkannya bila pinHash kosong → NULL).
+func (r *Repo) SetPin(ctx context.Context, storeID, id, pinHash string) error {
+	return r.q.UpdateStaffPin(ctx, sqlcgen.UpdateStaffPinParams{PinHash: nullStr(pinHash), ID: id, StoreID: storeID})
+}
+
+// SupervisorPin adalah baris supervisor aktif yang punya PIN (hash dipakai untuk verifikasi).
+type SupervisorPin struct {
+	ID      string
+	Name    string
+	PinHash string
+}
+
+// ListSupervisorPins mengembalikan supervisor aktif yang sudah menyetel PIN (untuk verifikasi).
+func (r *Repo) ListSupervisorPins(ctx context.Context, storeID string) ([]SupervisorPin, error) {
+	rows, err := r.q.ListSupervisorPins(ctx, storeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SupervisorPin, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, SupervisorPin{ID: row.ID, Name: row.Name, PinHash: row.PinHash.String})
+	}
+	return out, nil
+}
+
 func (r *Repo) Delete(ctx context.Context, storeID, id string) error {
 	return r.q.DeleteStaff(ctx, sqlcgen.DeleteStaffParams{ID: id, StoreID: storeID})
 }
@@ -96,6 +121,7 @@ func toEntity(s sqlcgen.Staff) domain.Staff {
 		Email:     s.Email.String,
 		Role:      string(s.Role),
 		Status:    string(s.Status),
+		HasPin:    s.PinHash.Valid,
 		CreatedAt: s.CreatedAt,
 	}
 }

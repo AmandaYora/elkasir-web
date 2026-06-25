@@ -40,6 +40,7 @@ func mapSettings(st sqlcgen.Setting) settingsclient.Settings {
 		CashVarianceTolerance: st.CashVarianceTolerance,
 		FeatureSelfOrder:      st.FeatureSelfOrder,
 		FeatureQris:           st.FeatureQris,
+		FeaturePayAtCashier:   st.FeaturePayAtCashier,
 		TaxEnabled:            st.TaxEnabled,
 		TaxPercent:            st.TaxPercent,
 		ServicePercent:        st.ServicePercent,

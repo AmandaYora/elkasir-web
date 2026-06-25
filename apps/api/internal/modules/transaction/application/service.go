@@ -150,9 +150,18 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 
 	// Settings toko (sekali ambil) → kebijakan kontrol diskon + biaya layanan/PPN.
 	cfg := s.loadSettings(ctx, storeID)
+
+	// Backstop QRIS: bila admin menonaktifkan QRIS, tolak meski klien menembus UI.
+	if in.PaymentMethod == "qris" && !cfg.FeatureQris {
+		return DTO{}, false, httpx.Unprocessable("Pembayaran QRIS sedang tidak tersedia.")
+	}
+
 	policy := controlPolicyFrom(cfg)
-	if policy.DiscountNeedsApproval(subtotal, in.Discount) && strings.TrimSpace(in.DiscountApprovedBy) == "" {
-		return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh persetujuan supervisor (discountApprovedBy).")
+	// Diskon di atas batas butuh persetujuan supervisor — kecuali yang menjalankan SUDAH
+	// supervisor/admin (override otomatis terpenuhi). PIN supervisor diverifikasi di klien
+	// via /pos/approvals/verify-pin; nama supervisor tercatat di discountApprovedBy (audit).
+	if policy.DiscountNeedsApproval(subtotal, in.Discount) && !p.IsSupervisorOrAdmin() && strings.TrimSpace(in.DiscountApprovedBy) == "" {
+		return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh persetujuan supervisor (PIN).")
 	}
 
 	// Kasir tidak memakai payment gateway → gateway fee 0; service 2% + PPN tetap berlaku.
@@ -261,12 +270,14 @@ func (s *Service) getDTO(ctx context.Context, storeID, txID string) (DTO, error)
 	return toDTO(t, items), nil
 }
 
-// loadSettings membaca settings via kontrak settingsclient; default aman bila gagal baca.
+// loadSettings membaca settings via kontrak settingsclient; default aman (fail-open) bila
+// gagal baca — fitur dibiarkan AKTIF agar error DB transien tidak memblokir penjualan QRIS.
 func (s *Service) loadSettings(ctx context.Context, storeID string) settingsclient.Settings {
 	cfg, err := s.settings.Get(ctx, storeID)
 	if err != nil {
 		return settingsclient.Settings{
 			MaxDiscountPercent: 10, MaxOperationalExpense: 200000, CashVarianceTolerance: 5000,
+			FeatureSelfOrder: true, FeatureQris: true, FeaturePayAtCashier: true,
 			ServicePercent: 2, TaxPercent: 11, TaxEnabled: false,
 		}
 	}
