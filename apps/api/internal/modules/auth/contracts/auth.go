@@ -93,6 +93,35 @@ func RequireStaffSupervisorOrAdmin(next http.Handler) http.Handler {
 	})
 }
 
+// RequireStaffOrAdmin gates POS operational write actions (e.g. redeem pay-at-cashier,
+// advance self-order status): any POS staff (cashier/supervisor — they are at the counter)
+// is allowed, OR an admin web user whose role is in adminRoles (the management fallback).
+// A read-only admin (viewer) is rejected. Use for actions that move cash/state on the floor.
+func RequireStaffOrAdmin(adminRoles ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]struct{}, len(adminRoles))
+	for _, r := range adminRoles {
+		allowed[r] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ok := PrincipalFrom(r.Context())
+			if !ok {
+				httpx.Error(w, httpx.Unauthorized("Autentikasi diperlukan."))
+				return
+			}
+			if p.Actor == ActorStaff {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if _, allow := allowed[p.Role]; p.Actor == ActorAdmin && allow {
+				next.ServeHTTP(w, r)
+				return
+			}
+			httpx.Error(w, httpx.Forbidden("Anda tidak punya izin untuk aksi ini."))
+		})
+	}
+}
+
 // RequireRole rejects (403) when the principal's role is not in the allowed set.
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(roles))

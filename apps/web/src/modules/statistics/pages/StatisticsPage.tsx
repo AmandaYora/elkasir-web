@@ -12,9 +12,9 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
+  ReferenceLine,
+  LabelList,
 } from "recharts";
-import { Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -22,77 +22,13 @@ import {
   CardTitle,
   CardDescription,
 } from "@/shared/components/ui/card";
-import { formatIDR } from "@/shared/lib/formatter";
+import { ChartTooltip, ChartState, LegendRow } from "@/shared/components/ui/chart";
+import { formatIDR, formatNumber } from "@/shared/lib/formatter";
+import { formatCompactIDR, formatDayShort, rankShade } from "@/shared/lib/chart";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { cn } from "@/shared/lib/cn";
 import { colors, chartPalette } from "@/theme";
 import { statisticsService } from "@/modules/statistics/services/statistics.service";
-
-type ChartTooltipPayload = {
-  color?: string;
-  fill?: string;
-  name?: string;
-  value: number;
-};
-
-function CT({
-  active,
-  payload,
-  label,
-  fmt,
-}: {
-  active?: boolean;
-  payload?: ChartTooltipPayload[];
-  label?: string;
-  fmt?: (value: number) => string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-md">
-      {label && <div className="mb-1 font-medium">{label}</div>}
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full" style={{ background: p.color || p.fill }} />
-          <span className="text-muted">{p.name}:</span>
-          <span className="font-medium">{fmt ? fmt(p.value) : p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Pembungkus status loading/error/kosong untuk isi chart.
-function ChartState({
-  isLoading,
-  error,
-  isEmpty,
-  children,
-}: {
-  isLoading: boolean;
-  error: string | null;
-  isEmpty: boolean;
-  children: React.ReactNode;
-}) {
-  if (isLoading)
-    return (
-      <div className="flex h-full items-center justify-center text-muted">
-        <Loader2 className="h-5 w-5 animate-spin" />
-      </div>
-    );
-  if (error)
-    return (
-      <div className="flex h-full items-center justify-center text-center text-sm text-danger">
-        Gagal memuat data. {error}
-      </div>
-    );
-  if (isEmpty)
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted">
-        Belum ada data
-      </div>
-    );
-  return <>{children}</>;
-}
 
 const RANGE_OPTIONS = [
   { value: "7", label: "7 hari" },
@@ -100,7 +36,10 @@ const RANGE_OPTIONS = [
   { value: "90", label: "90 hari" },
 ];
 
-// "YYYY-MM-DD" untuk hari ini dan hari ini − n.
+// Money = primary blue; counts = slate. Mono ticks read as data, not prose.
+const AXIS_TICK = { fill: colors.muted, fontSize: 11, fontFamily: "var(--font-mono)" } as const;
+const PAYMENT_COLORS: Record<string, string> = { Tunai: chartPalette[0], QRIS: chartPalette[3] };
+
 function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
 }
@@ -108,6 +47,15 @@ function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="font-mono text-[11px] uppercase tracking-wider text-muted">{label}</p>
+      <p className="mt-0.5 font-display text-lg font-semibold tabular-nums text-text">{value}</p>
+    </div>
+  );
 }
 
 export default function StatisticsPage() {
@@ -137,36 +85,46 @@ export default function StatisticsPage() {
   const top = topProductsQuery.data ?? [];
   const staff = staffQuery.data ?? [];
 
+  const salesSummary = useMemo(() => {
+    if (!sales.length) return null;
+    const total = sales.reduce((s, d) => s + d.revenue, 0);
+    const tx = sales.reduce((s, d) => s + d.txCount, 0);
+    const peak = sales.reduce((m, d) => (d.revenue > m.revenue ? d : m), sales[0]);
+    return { total, tx, avg: total / sales.length, peak };
+  }, [sales]);
+
   const paymentData = useMemo(() => {
     if (!payment) return [];
-    const rows = [
-      { name: "Tunai", value: payment.cashTotal, color: chartPalette[0] },
-      { name: "QRIS", value: payment.qrisTotal, color: chartPalette[1] },
-    ];
-    return rows.filter((r) => r.value > 0);
+    return [
+      { name: "Tunai", value: payment.cashTotal },
+      { name: "QRIS", value: payment.qrisTotal },
+    ].filter((r) => r.value > 0);
   }, [payment]);
+  const paymentTotal = paymentData.reduce((s, r) => s + r.value, 0);
 
+  const categoriesRanked = useMemo(
+    () => [...categories].sort((a, b) => b.revenue - a.revenue),
+    [categories],
+  );
   const staffRanked = useMemo(() => [...staff].sort((a, b) => b.revenue - a.revenue), [staff]);
   const staffMax = Math.max(1, ...staffRanked.map((s) => s.revenue));
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-5 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-text">Statistik</h2>
+          <h2 className="font-display text-xl font-semibold tracking-tight text-text">Statistik</h2>
           <p className="text-sm text-muted">Analitik mendalam untuk seluruh bisnis Anda.</p>
         </div>
-        <div className="inline-flex rounded-md border border-border bg-surface p-0.5">
+        <div className="inline-flex rounded-lg border border-border bg-surface-muted p-0.5">
           {RANGE_OPTIONS.map((o) => (
             <button
               key={o.value}
               type="button"
               onClick={() => setRange(o.value)}
               className={cn(
-                "rounded px-3 py-1 text-xs font-medium transition-colors",
-                range === o.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted hover:bg-surface-muted",
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                range === o.value ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text",
               )}
             >
               {o.label}
@@ -175,94 +133,147 @@ export default function StatisticsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Pendapatan</CardTitle>
-            <CardDescription>Pendapatan harian</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-72">
-              <ChartState
-                isLoading={salesQuery.loading}
-                error={salesQuery.error}
-                isEmpty={sales.length === 0}
-              >
-                <ResponsiveContainer>
-                  <AreaChart data={sales}>
-                    <defs>
-                      <linearGradient id="rv" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={chartPalette[0]} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={chartPalette[0]} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis
-                      dataKey="day"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                      tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`}
-                    />
-                    <Tooltip content={<CT fmt={(v: number) => formatIDR(v)} />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      name="Pendapatan"
-                      stroke={chartPalette[0]}
-                      strokeWidth={2.5}
-                      fill="url(#rv)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </ChartState>
+      {/* Hero — revenue trend with period context (total / avg-per-day / best day). */}
+      <Card>
+        <CardHeader className="pb-0">
+          <CardTitle className="font-display">Pendapatan</CardTitle>
+          <CardDescription>Pendapatan harian sepanjang periode</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          {salesSummary && (
+            <div className="flex flex-wrap gap-x-10 gap-y-3 border-b border-border pb-4">
+              <Metric label="Total" value={formatIDR(salesSummary.total)} />
+              <Metric label="Rata-rata / hari" value={formatIDR(Math.round(salesSummary.avg))} />
+              <Metric label="Transaksi" value={formatNumber(salesSummary.tx)} />
+              <Metric
+                label="Hari terbaik"
+                value={`${formatDayShort(salesSummary.peak.day)} · ${formatCompactIDR(salesSummary.peak.revenue)}`}
+              />
             </div>
-          </CardContent>
-        </Card>
+          )}
+          <div className="h-72 md:h-80">
+            <ChartState
+              loading={salesQuery.loading}
+              error={salesQuery.error}
+              empty={sales.length === 0}
+            >
+              <ResponsiveContainer>
+                <AreaChart data={sales} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={colors.primary} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={colors.primary} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.7} />
+                  <XAxis
+                    dataKey="day"
+                    tickFormatter={formatDayShort}
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    minTickGap={28}
+                    tick={AXIS_TICK}
+                  />
+                  <YAxis
+                    tickFormatter={formatCompactIDR}
+                    tickLine={false}
+                    axisLine={false}
+                    width={64}
+                    tick={AXIS_TICK}
+                  />
+                  {salesSummary && (
+                    <ReferenceLine
+                      y={salesSummary.avg}
+                      stroke={colors.muted}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.7}
+                      label={{
+                        value: "rata-rata",
+                        position: "insideTopRight",
+                        fill: colors.muted,
+                        fontSize: 10,
+                      }}
+                    />
+                  )}
+                  <Tooltip
+                    cursor={{ stroke: colors.primary, strokeOpacity: 0.25, strokeWidth: 1.5 }}
+                    content={
+                      <ChartTooltip
+                        labelFormatter={(l) => formatDayShort(String(l))}
+                        formatter={(v) => formatIDR(v)}
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Pendapatan"
+                    stroke={colors.primary}
+                    strokeWidth={2.25}
+                    fill="url(#revFill)"
+                    dot={false}
+                    activeDot={{
+                      r: 4,
+                      strokeWidth: 2,
+                      stroke: colors.surface,
+                      fill: colors.primary,
+                    }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartState>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Volume Transaksi</CardTitle>
+            <CardTitle className="font-display">Volume Transaksi</CardTitle>
             <CardDescription>Jumlah transaksi harian</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
+            <div className="h-64">
               <ChartState
-                isLoading={salesQuery.loading}
+                loading={salesQuery.loading}
                 error={salesQuery.error}
-                isEmpty={sales.length === 0}
+                empty={sales.length === 0}
               >
                 <ResponsiveContainer>
-                  <BarChart data={sales}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={colors.border} />
+                  <BarChart data={sales} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.7} />
                     <XAxis
                       dataKey="day"
+                      tickFormatter={formatDayShort}
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
+                      tickMargin={10}
+                      minTickGap={28}
+                      tick={AXIS_TICK}
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
                       allowDecimals={false}
+                      width={32}
+                      tick={AXIS_TICK}
                     />
-                    <Tooltip content={<CT />} />
+                    <Tooltip
+                      cursor={{ fill: colors.surfaceMuted, fillOpacity: 0.6 }}
+                      content={
+                        <ChartTooltip
+                          labelFormatter={(l) => formatDayShort(String(l))}
+                          formatter={(v) => formatNumber(v)}
+                        />
+                      }
+                    />
                     <Bar
                       dataKey="txCount"
                       name="Transaksi"
-                      fill={chartPalette[1]}
-                      radius={[6, 6, 0, 0]}
+                      fill={colors.secondary}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={36}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -270,84 +281,58 @@ export default function StatisticsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Distribusi Pembayaran</CardTitle>
+            <CardTitle className="font-display">Distribusi Pembayaran</CardTitle>
             <CardDescription>Proporsi pendapatan per metode</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-56">
-              <ChartState
-                isLoading={paymentQuery.loading}
-                error={paymentQuery.error}
-                isEmpty={paymentData.length === 0}
-              >
+            <ChartState
+              loading={paymentQuery.loading}
+              error={paymentQuery.error}
+              empty={paymentData.length === 0}
+            >
+              <div className="relative h-44">
                 <ResponsiveContainer>
                   <PieChart>
                     <Pie
                       data={paymentData}
                       dataKey="value"
                       nameKey="name"
-                      innerRadius="45%"
-                      outerRadius="80%"
+                      innerRadius="62%"
+                      outerRadius="92%"
                       paddingAngle={2}
+                      stroke="none"
                     >
-                      {paymentData.map((e, i) => (
-                        <Cell key={i} fill={e.color} />
+                      {paymentData.map((e) => (
+                        <Cell key={e.name} fill={PAYMENT_COLORS[e.name]} />
                       ))}
                     </Pie>
-                    <Tooltip content={<CT fmt={(v: number) => formatIDR(v)} />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => formatIDR(v)} />} />
                   </PieChart>
                 </ResponsiveContainer>
-              </ChartState>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Penjualan per Kategori</CardTitle>
-            <CardDescription>Pendapatan menurut kategori menu</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-56">
-              <ChartState
-                isLoading={categoryQuery.loading}
-                error={categoryQuery.error}
-                isEmpty={categories.length === 0}
-              >
-                <ResponsiveContainer>
-                  <BarChart data={categories}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={colors.border} />
-                    <XAxis
-                      dataKey="category"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                      tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`}
-                    />
-                    <Tooltip content={<CT fmt={(v: number) => formatIDR(v)} />} />
-                    <Bar
-                      dataKey="revenue"
-                      name="Penjualan"
-                      fill={chartPalette[2]}
-                      radius={[6, 6, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartState>
-            </div>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                    Total
+                  </span>
+                  <span className="font-display text-lg font-semibold tabular-nums text-text">
+                    {formatCompactIDR(paymentTotal)}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {paymentData.map((p) => (
+                  <LegendRow
+                    key={p.name}
+                    color={PAYMENT_COLORS[p.name]}
+                    label={p.name}
+                    value={formatIDR(p.value)}
+                    share={paymentTotal > 0 ? Math.round((p.value / paymentTotal) * 100) : 0}
+                  />
+                ))}
+              </div>
+            </ChartState>
           </CardContent>
         </Card>
       </div>
@@ -355,47 +340,49 @@ export default function StatisticsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Produk Terlaris</CardTitle>
-            <CardDescription>Unit terjual</CardDescription>
+            <CardTitle className="font-display">Penjualan per Kategori</CardTitle>
+            <CardDescription>Pendapatan menurut kategori menu</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               <ChartState
-                isLoading={topProductsQuery.loading}
-                error={topProductsQuery.error}
-                isEmpty={top.length === 0}
+                loading={categoryQuery.loading}
+                error={categoryQuery.error}
+                empty={categoriesRanked.length === 0}
               >
                 <ResponsiveContainer>
-                  <BarChart data={top} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid
-                      horizontal={false}
-                      strokeDasharray="3 3"
-                      stroke={colors.border}
-                    />
+                  <BarChart
+                    data={categoriesRanked}
+                    margin={{ top: 8, right: 8, left: 4, bottom: 0 }}
+                  >
+                    <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.7} />
                     <XAxis
-                      type="number"
+                      dataKey="category"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                      allowDecimals={false}
+                      tickMargin={10}
+                      tick={AXIS_TICK}
                     />
                     <YAxis
-                      dataKey="productName"
-                      type="category"
+                      tickFormatter={formatCompactIDR}
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      stroke={colors.muted}
-                      width={110}
+                      width={64}
+                      tick={AXIS_TICK}
                     />
-                    <Tooltip content={<CT />} />
-                    <Bar
-                      dataKey="qty"
-                      name="Terjual"
-                      fill={chartPalette[3]}
-                      radius={[0, 6, 6, 0]}
+                    <Tooltip
+                      cursor={{ fill: colors.surfaceMuted, fillOpacity: 0.6 }}
+                      content={<ChartTooltip formatter={(v) => formatIDR(v)} />}
                     />
+                    <Bar dataKey="revenue" name="Penjualan" radius={[5, 5, 0, 0]} maxBarSize={56}>
+                      {categoriesRanked.map((c, i) => (
+                        <Cell
+                          key={c.category}
+                          fill={colors.primary}
+                          fillOpacity={rankShade(i, categoriesRanked.length)}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </ChartState>
@@ -405,45 +392,115 @@ export default function StatisticsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Kinerja Staf</CardTitle>
-            <CardDescription>Peringkat pendapatan</CardDescription>
+            <CardTitle className="font-display">Produk Terlaris</CardTitle>
+            <CardDescription>Unit terjual</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="min-h-[16rem]">
+            <div className="h-64">
               <ChartState
-                isLoading={staffQuery.loading}
-                error={staffQuery.error}
-                isEmpty={staffRanked.length === 0}
+                loading={topProductsQuery.loading}
+                error={topProductsQuery.error}
+                empty={top.length === 0}
               >
-                <div className="space-y-3">
-                  {staffRanked.map((c, i) => (
-                    <div key={c.staffId}>
-                      <div className="mb-1.5 flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-muted text-xs font-medium">
-                            {i + 1}
-                          </span>
-                          <span className="font-medium">{c.name}</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">{formatIDR(c.revenue)}</div>
-                          <div className="text-xs text-muted">{c.txCount} trx</div>
-                        </div>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${(c.revenue / staffMax) * 100}%` }}
+                <ResponsiveContainer>
+                  <BarChart data={top} layout="vertical" margin={{ left: 8, right: 28 }}>
+                    <CartesianGrid horizontal={false} stroke={colors.border} strokeOpacity={0.7} />
+                    <XAxis
+                      type="number"
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                      tick={AXIS_TICK}
+                      hide
+                    />
+                    <YAxis
+                      dataKey="productName"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      width={120}
+                      tick={{ ...AXIS_TICK, fontFamily: undefined }}
+                    />
+                    <Tooltip
+                      cursor={{ fill: colors.surfaceMuted, fillOpacity: 0.6 }}
+                      content={<ChartTooltip formatter={(v) => formatNumber(v)} />}
+                    />
+                    <Bar dataKey="qty" name="Terjual" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                      {top.map((p, i) => (
+                        <Cell
+                          key={p.productName}
+                          fill={colors.primary}
+                          fillOpacity={rankShade(i, top.length)}
                         />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      ))}
+                      <LabelList
+                        dataKey="qty"
+                        position="right"
+                        fill={colors.muted}
+                        fontSize={11}
+                        className="font-mono"
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </ChartState>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display">Kinerja Staf</CardTitle>
+          <CardDescription>Peringkat pendapatan per staf</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartState
+            loading={staffQuery.loading}
+            error={staffQuery.error}
+            empty={staffRanked.length === 0}
+          >
+            <div className="space-y-4">
+              {staffRanked.map((c, i) => (
+                <div key={c.staffId}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-full font-mono text-xs font-semibold tabular-nums",
+                          i === 0
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-surface-muted text-muted",
+                        )}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="font-medium text-text">{c.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono font-medium tabular-nums text-text">
+                        {formatIDR(c.revenue)}
+                      </div>
+                      <div className="font-mono text-xs tabular-nums text-muted">
+                        {formatNumber(c.txCount)} transaksi
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{
+                        width: `${(c.revenue / staffMax) * 100}%`,
+                        opacity: rankShade(i, staffRanked.length),
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ChartState>
+        </CardContent>
+      </Card>
     </div>
   );
 }

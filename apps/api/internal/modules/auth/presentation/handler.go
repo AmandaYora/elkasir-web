@@ -7,6 +7,7 @@ import (
 	"github.com/elkasir/api/internal/modules/auth/application"
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	"github.com/elkasir/api/internal/modules/auth/domain"
+	"github.com/elkasir/api/internal/platform/httpserver"
 	"github.com/elkasir/api/internal/platform/httpx"
 	"github.com/go-chi/chi/v5"
 )
@@ -23,9 +24,14 @@ func NewHandler(svc *application.Service, auth authcontract.Authenticator) *Hand
 // Routes mounts the auth endpoints.
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/auth", func(r chi.Router) {
-		r.Post("/admin/login", h.adminLogin)
-		r.Post("/staff/login", h.staffLogin)
-		r.Post("/refresh", h.refresh)
+		// Anti brute-force: batasi percobaan login & refresh token per IP (klien asli dari
+		// RealIP/nginx). Kredensial salah berulang akan ditahan 429.
+		r.Group(func(r chi.Router) {
+			r.Use(httpserver.RateLimit(20))
+			r.Post("/admin/login", h.adminLogin)
+			r.Post("/staff/login", h.staffLogin)
+			r.Post("/refresh", h.refresh)
+		})
 		r.Post("/logout", h.logout)
 
 		r.Group(func(r chi.Router) {

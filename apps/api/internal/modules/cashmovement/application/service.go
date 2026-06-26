@@ -66,6 +66,13 @@ func (s *Service) List(ctx context.Context, f domain.ListFilter) ([]DTO, int64, 
 func (s *Service) Create(ctx context.Context, p authcontract.Principal, in domain.Input) (DTO, error) {
 	storeID := p.StoreID
 
+	// Admin read-only (viewer) hanya boleh MELIHAT mutasi kas, tidak mencatatnya. Route mengizinkan
+	// semua admin (agar viewer tetap bisa baca daftar); pengecualian write ditegakkan di sini supaya
+	// konsisten dengan peran read-only — tanpa mengganggu akses baca laporan yang memakai middleware sama.
+	if p.Actor == authcontract.ActorAdmin && p.Role == "viewer" {
+		return DTO{}, httpx.Forbidden("Akun viewer hanya dapat melihat, tidak dapat mencatat kas.")
+	}
+
 	if err := in.Validate(); err != nil {
 		return DTO{}, err
 	}

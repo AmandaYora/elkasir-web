@@ -60,3 +60,10 @@ func (c *apiClient) Decrease(ctx context.Context, storeID, productID string, qty
 	}
 	return nil
 }
+
+// Increase atomically restocks (stock = stock + qty). Best-effort: 0 rows affected means the
+// product was deleted since the sale — a void should still succeed, so this is not an error.
+func (c *apiClient) Increase(ctx context.Context, storeID, productID string, qty int32) error {
+	_, err := c.uow.Q(ctx).AdjustProductStock(ctx, sqlcgen.AdjustProductStockParams{Stock: qty, ID: productID, StoreID: storeID})
+	return err
+}

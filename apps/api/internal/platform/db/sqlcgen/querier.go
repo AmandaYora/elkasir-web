@@ -105,6 +105,9 @@ type Querier interface {
 	UpdateStaffPin(ctx context.Context, arg UpdateStaffPinParams) error
 	UpdateTable(ctx context.Context, arg UpdateTableParams) error
 	UpsertSettings(ctx context.Context, arg UpsertSettingsParams) error
+	// Batalkan transaksi (void). Hanya transaksi 'completed' yang bisa dibatalkan; 0 rows =
+	// tidak ditemukan / sudah dibatalkan. Pengecualian (tunai, dalam shift) ditegakkan di service.
+	VoidTransaction(ctx context.Context, arg VoidTransactionParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

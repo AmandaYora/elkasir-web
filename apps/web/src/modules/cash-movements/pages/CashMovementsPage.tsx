@@ -22,7 +22,9 @@ import {
   TableCell,
 } from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
+import { zodFieldErrors } from "@/shared/lib/form";
 import { formatIDR, formatDateTime } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { cashMovementsService } from "@/modules/cash-movements/services/cash-movements.service";
@@ -106,10 +108,7 @@ export default function CashMovementsPage() {
         {movementsQuery.loading ? (
           <LoadingState />
         ) : movementsQuery.error ? (
-          <ErrorState
-            message={`Gagal memuat mutasi kas. ${movementsQuery.error}`}
-            onRetry={refresh}
-          />
+          <ErrorState message="Gagal memuat mutasi kas. Coba lagi." onRetry={refresh} />
         ) : items.length === 0 ? (
           <EmptyState title="Belum ada mutasi kas." />
         ) : (
@@ -203,6 +202,8 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
   const [notes, setNotes] = useState("");
   const [approvedBy, setApprovedBy] = useState("");
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const clearError = (key: string) => setErrors((e) => (e[key] ? { ...e, [key]: "" } : e));
 
   const submit = async () => {
     const body: CashMovementInput = {
@@ -213,7 +214,7 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
     };
     const parsed = cashMovementSchema.safeParse(body);
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
     setBusy(true);
@@ -222,7 +223,7 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
       toast.success("Mutasi kas dicatat");
       onDone();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan mutasi");
+      toast.error("Gagal menyimpan mutasi. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -240,15 +241,22 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
       </div>
       <div className="grid gap-2">
         <Label>Nominal (IDR)</Label>
+        {/* Number input (bukan MoneyInput): jenis "adjustment" boleh negatif untuk mengurangi
+            kas — masker ribuan akan membuang tanda minus. */}
         <Input
           type="number"
           placeholder="0"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            clearError("amount");
+          }}
+          aria-invalid={!!errors.amount}
         />
         {type === "adjustment" && (
           <p className="text-xs text-muted">Boleh negatif untuk mengurangi kas (mis. -5000).</p>
         )}
+        <FieldError msg={errors.amount} />
       </div>
       <div className="grid gap-2">
         <Label>Catatan</Label>
@@ -256,16 +264,26 @@ function CashMovementForm({ onDone }: { onDone: () => void }) {
           placeholder="Alasan / keterangan"
           rows={3}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => {
+            setNotes(e.target.value);
+            clearError("notes");
+          }}
+          aria-invalid={!!errors.notes}
         />
+        <FieldError msg={errors.notes} />
       </div>
       <div className="grid gap-2">
         <Label>Disetujui oleh (opsional)</Label>
         <Input
           placeholder="Nama pemberi persetujuan"
           value={approvedBy}
-          onChange={(e) => setApprovedBy(e.target.value)}
+          onChange={(e) => {
+            setApprovedBy(e.target.value);
+            clearError("approvedBy");
+          }}
+          aria-invalid={!!errors.approvedBy}
         />
+        <FieldError msg={errors.approvedBy} />
       </div>
       <div className="flex justify-end">
         <Button loading={busy} onClick={submit}>

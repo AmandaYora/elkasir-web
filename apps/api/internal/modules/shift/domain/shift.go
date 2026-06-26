@@ -38,6 +38,7 @@ type CloseInput struct {
 	ActualCash      int64  `json:"actualCash"`
 	DrawerOpenCount int32  `json:"drawerOpenCount"`
 	CloseApprovedBy string `json:"closeApprovedBy"`
+	SupervisorPin   string `json:"supervisorPin"`
 }
 
 // Validate enforces close-shift business rules.

@@ -16,6 +16,7 @@ import {
 } from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Pagination } from "@/shared/components/ui/pagination";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
@@ -61,7 +62,7 @@ export default function CategoriesPage() {
       setDeleting(null);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus kategori");
+      toast.error("Gagal menghapus kategori. Coba lagi.");
       setDeleting(null);
     } finally {
       setBusy(false);
@@ -111,7 +112,7 @@ export default function CategoriesPage() {
         {categoriesQuery.loading ? (
           <LoadingState />
         ) : categoriesQuery.error ? (
-          <ErrorState message={categoriesQuery.error} onRetry={refresh} />
+          <ErrorState message="Gagal memuat kategori. Coba lagi." onRetry={refresh} />
         ) : paged.length === 0 ? (
           <EmptyState title="Belum ada kategori" description="Tambahkan kategori pertama Anda." />
         ) : (
@@ -200,7 +201,7 @@ export default function CategoriesPage() {
               setEditing(null);
               refresh();
             } catch (e) {
-              toast.error(e instanceof Error ? e.message : "Gagal menyimpan kategori");
+              toast.error("Gagal menyimpan kategori. Coba lagi.");
             } finally {
               setBusy(false);
             }
@@ -238,20 +239,22 @@ function CategoryForm({
   onSubmit: (name: string) => void;
 }) {
   const [name, setName] = useState(editing?.name ?? "");
+  const [error, setError] = useState("");
 
   const submit = () => {
     const value = name.trim();
     const parsed = categorySchema.safeParse({ name: value });
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+      setError(parsed.error.issues[0]?.message ?? "Periksa input.");
       return;
     }
     if (
       existing.some((c) => c.id !== editing?.id && c.name.toLowerCase() === value.toLowerCase())
     ) {
-      toast.error("Kategori sudah ada");
+      setError("Kategori sudah ada");
       return;
     }
+    setError("");
     onSubmit(value);
   };
 
@@ -261,10 +264,15 @@ function CategoryForm({
         <Label>Nama Kategori</Label>
         <Input
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (error) setError("");
+          }}
           placeholder="mis. Minuman Dingin"
           onKeyDown={(e) => e.key === "Enter" && submit()}
+          aria-invalid={!!error}
         />
+        <FieldError msg={error} />
       </div>
       <div className="flex justify-end">
         <Button loading={busy} onClick={submit}>

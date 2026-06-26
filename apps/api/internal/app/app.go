@@ -67,17 +67,20 @@ func (a *App) routes() {
 	authMod := auth.New(a.Queries, a.Cfg.JWT.Secret, a.Cfg.JWT.AccessTTL, a.Cfg.JWT.RefreshTTL)
 	mw := authMod.Middleware
 
+	// Staff is a provider too: it exposes the supervisor-PIN contract consumed by the shift &
+	// transaction orchestrators (over-threshold approval), so it's assembled before them.
+	staffMod := staff.New(a.Pool, a.Queries, mw)
+
 	// Provider modules (expose contracts consumed by orchestrators), tx-aware via UoW.
 	settingsMod := settings.New(a.Pool, a.Queries, a.UoW, mw)
 	productMod := product.New(a.Pool, a.Queries, a.UoW, mw)
-	shiftMod := shift.New(a.Pool, a.Queries, a.UoW, mw)
+	shiftMod := shift.New(a.Pool, a.Queries, a.UoW, mw, staffMod.Client)
 	tableMod := table.New(a.Pool, a.Queries, a.UoW, mw)
 	paymentMod := payment.New(a.Cfg.Payment, a.UoW)
-	txMod := transaction.New(a.Pool, a.Queries, a.UoW, mw, productMod.Client, shiftMod.Client, settingsMod.Client)
+	txMod := transaction.New(a.Pool, a.Queries, a.UoW, mw, productMod.Client, shiftMod.Client, settingsMod.Client, staffMod.Client)
 
 	// Leaf / consumer modules.
 	categoryMod := category.New(a.Pool, a.Queries, mw)
-	staffMod := staff.New(a.Pool, a.Queries, mw)
 	adminMod := adminuser.New(a.Pool, a.Queries, mw)
 	withdrawalMod := withdrawal.New(a.Pool, a.Queries, mw)
 	reportMod := report.New(a.Pool, a.Queries, mw)

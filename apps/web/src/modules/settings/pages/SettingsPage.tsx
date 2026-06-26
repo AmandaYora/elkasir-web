@@ -19,8 +19,6 @@ import { settingsSchema } from "@/modules/settings/schemas/settings.schema";
 import { zodFieldErrors } from "@/shared/lib/form";
 import type { Settings } from "@/modules/settings/types/settings.types";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Terjadi kesalahan.");
-
 // Pengaturan toko: pajak & layanan (PPN), fitur, dan ambang kontrol.
 export default function SettingsPage() {
   const [form, setForm] = useState<Settings | null>(null);
@@ -33,7 +31,7 @@ export default function SettingsPage() {
     settingsService
       .get()
       .then((s) => active && setForm(s))
-      .catch((e) => active && toast.error(errMsg(e)))
+      .catch(() => active && toast.error("Gagal memuat pengaturan. Coba lagi."))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
@@ -69,8 +67,8 @@ export default function SettingsPage() {
       const updated = await settingsService.update(parsed.data);
       setForm(updated);
       toast.success("Pengaturan berhasil disimpan");
-    } catch (e) {
-      toast.error(errMsg(e));
+    } catch {
+      toast.error("Gagal menyimpan pengaturan. Coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -89,8 +87,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Pajak & Layanan</CardTitle>
           <CardDescription>
-            Biaya layanan (termasuk biaya payment gateway untuk QRIS) dan PPN tampil sebagai rincian
-            terpisah ke pelanggan.
+            Biaya layanan dan PPN tampil sebagai rincian terpisah ke pelanggan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -160,7 +157,7 @@ export default function SettingsPage() {
                 disabled={!form.featureSelfOrder}
                 onChange={(e) => set("featureQris", e.target.checked)}
               />
-              <span className="text-sm font-medium">Bayar QRIS (payment gateway)</span>
+              <span className="text-sm font-medium">Bayar QRIS</span>
             </label>
             <label className="flex items-center gap-3">
               <Checkbox

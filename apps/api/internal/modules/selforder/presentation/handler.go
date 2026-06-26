@@ -49,10 +49,16 @@ func (h *Handler) Routes(r chi.Router) {
 	// Staf/admin — pesanan masuk & tebus barcode.
 	r.Route("/self-orders", func(r chi.Router) {
 		r.Use(h.auth.Authenticate)
-		r.Get("/", h.listIncoming)
-		r.Patch("/{id}/status", h.updateStatus)
-		r.Get("/redeem/{claimCode}", h.redeem)
-		r.Post("/redeem/{claimCode}/checkout", h.redeemCheckout)
+		r.Get("/", h.listIncoming) // baca daftar: semua principal terautentikasi
+
+		// Operasi lantai (ubah status dapur, tebus + terima tunai): staf POS (kasir/supervisor)
+		// atau admin owner/admin sebagai fallback. Admin viewer/manager (read-only) ditolak.
+		r.Group(func(r chi.Router) {
+			r.Use(authcontract.RequireStaffOrAdmin("owner", "admin"))
+			r.Patch("/{id}/status", h.updateStatus)
+			r.Get("/redeem/{claimCode}", h.redeem)
+			r.Post("/redeem/{claimCode}/checkout", h.redeemCheckout)
+		})
 	})
 }
 

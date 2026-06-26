@@ -1,6 +1,6 @@
 # CLAUDE.md — Elkasir AI Gateway
 
-Elkasir is a **multi-tenant POS for F&B**. One Go API serves a **React 19 web admin** dashboard and **customer self-order** pages; a separate Flutter app (`elkasir_pos`, not in this repo) is the cashier POS. This file is a concise gateway — **read the relevant `knowledge/` file before changing code.**
+Elkasir is a **multi-tenant POS for F&B**. One Go API serves a **React 19 web admin** dashboard and **customer self-order** pages; a separate **Flutter mobile app (`elkasir_pos`)** is the cashier POS used by **POS staff (cashier & supervisor)**. That app lives in the **sibling project [`../elkasir_mobile`](../elkasir_mobile/CLAUDE.md)** and consumes this same API at `/api/v1` — the two repos move together. This file is a concise gateway — **read the relevant `knowledge/` file before changing code.**
 
 ## Stack (locked)
 
@@ -8,6 +8,7 @@ Elkasir is a **multi-tenant POS for F&B**. One Go API serves a **React 19 web ad
 - **Frontend** `apps/web`: **React 19 + Tailwind 4**, **react-router-dom** (lazy routes), **Zustand**, **Zod**, **Axios**, `@/*` alias. **No TanStack. No Turborepo.**
 - **Packages**: `packages/api-contract` (OpenAPI → TS), `packages/shared` (domain-agnostic TS).
 - **Deploy**: ONE container — SPA built statically and **embedded into the Go binary**; one process serves the SPA (root) + API (`/api/v1`). **MySQL runs at host/OS level**, never a DB container by default.
+- **Mobile POS** (separate project `../elkasir_mobile`): Flutter cashier app `elkasir_pos` for **POS staff — cashier & supervisor**. Thin client; this API is its only backend. Supervisor PIN approvals (over-cap discount, void, over-tolerance shift close) are **verified here, server-side**. Gateway: [`../elkasir_mobile/CLAUDE.md`](../elkasir_mobile/CLAUDE.md).
 
 ## Commands (run from repo root, web & api separately)
 

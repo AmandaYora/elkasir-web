@@ -15,6 +15,7 @@ import (
 	productclient "github.com/elkasir/api/internal/modules/product/contracts"
 	settingsclient "github.com/elkasir/api/internal/modules/settings/contracts"
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
+	staffclient "github.com/elkasir/api/internal/modules/staff/contracts"
 	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
 	"github.com/elkasir/api/internal/modules/transaction/domain"
 	"github.com/elkasir/api/internal/modules/transaction/infrastructure"
@@ -32,11 +33,12 @@ type Service struct {
 	shifts   shiftclient.Client
 	sales    salesclient.Client
 	settings settingsclient.Client
+	staff    staffclient.Client
 	uow      *uow.Manager
 }
 
-func NewService(repo *infrastructure.Repo, productClient productclient.Client, shiftClient shiftclient.Client, salesClient salesclient.Client, settingsClient settingsclient.Client, uowMgr *uow.Manager) *Service {
-	return &Service{repo: repo, products: productClient, shifts: shiftClient, sales: salesClient, settings: settingsClient, uow: uowMgr}
+func NewService(repo *infrastructure.Repo, productClient productclient.Client, shiftClient shiftclient.Client, salesClient salesclient.Client, settingsClient settingsclient.Client, staffClient staffclient.Client, uowMgr *uow.Manager) *Service {
+	return &Service{repo: repo, products: productClient, shifts: shiftClient, sales: salesClient, settings: settingsClient, staff: staffClient, uow: uowMgr}
 }
 
 type ItemDTO struct {
@@ -67,11 +69,13 @@ type DTO struct {
 	GatewayFee     int64     `json:"gatewayFee"`
 	ServiceLine    int64     `json:"serviceLine"`
 	Total          int64     `json:"total"`
-	AmountReceived int64     `json:"amountReceived"`
-	ChangeAmount   int64     `json:"changeAmount"`
-	CustomerNote   string    `json:"customerNote,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	Items          []ItemDTO `json:"items"`
+	AmountReceived int64      `json:"amountReceived"`
+	ChangeAmount   int64      `json:"changeAmount"`
+	CustomerNote   string     `json:"customerNote,omitempty"`
+	VoidedAt       *time.Time `json:"voidedAt,omitempty"`
+	VoidReason     string     `json:"voidReason,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	Items          []ItemDTO  `json:"items"`
 }
 
 type CreateItemInput struct {
@@ -88,8 +92,18 @@ type CreateInput struct {
 	TableID            string            `json:"tableId"`
 	OrderType          string            `json:"orderType"`
 	DiscountApprovedBy string            `json:"discountApprovedBy"`
+	SupervisorPin      string            `json:"supervisorPin"`
 	CustomerNote       string            `json:"customerNote"`
 }
+
+// VoidInput membatalkan transaksi tunai pada shift berjalan (restock + reversal status).
+type VoidInput struct {
+	Reason        string `json:"reason"`
+	SupervisorPin string `json:"supervisorPin"` // wajib untuk kasir; supervisor/admin override
+}
+
+// errVoidConflict: balapan — transaksi sudah dibatalkan di antara baca & tulis.
+var errVoidConflict = errors.New("transaksi sudah dibatalkan")
 
 // Create membuat transaksi kasir (Kondisi 1) atomik & idempoten.
 // Mengembalikan (dto, created). created=false berarti hasil replay idempotency.
@@ -149,7 +163,10 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 	}
 
 	// Settings toko (sekali ambil) → kebijakan kontrol diskon + biaya layanan/PPN.
-	cfg := s.loadSettings(ctx, storeID)
+	cfg, err := s.loadSettings(ctx, storeID)
+	if err != nil {
+		return DTO{}, false, err
+	}
 
 	// Backstop QRIS: bila admin menonaktifkan QRIS, tolak meski klien menembus UI.
 	if in.PaymentMethod == "qris" && !cfg.FeatureQris {
@@ -158,10 +175,19 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 
 	policy := controlPolicyFrom(cfg)
 	// Diskon di atas batas butuh persetujuan supervisor — kecuali yang menjalankan SUDAH
-	// supervisor/admin (override otomatis terpenuhi). PIN supervisor diverifikasi di klien
-	// via /pos/approvals/verify-pin; nama supervisor tercatat di discountApprovedBy (audit).
-	if policy.DiscountNeedsApproval(subtotal, in.Discount) && !p.IsSupervisorOrAdmin() && strings.TrimSpace(in.DiscountApprovedBy) == "" {
-		return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh persetujuan supervisor (PIN).")
+	// supervisor/admin (override otomatis terpenuhi). Untuk kasir, PIN supervisor diverifikasi
+	// DI SERVER (anti-spoof): nama supervisor yang tercatat di approvedBy berasal dari hasil
+	// resolusi PIN, bukan dari string yang dikirim klien.
+	approvedBy := strings.TrimSpace(in.DiscountApprovedBy)
+	if policy.DiscountNeedsApproval(subtotal, in.Discount) && !p.IsSupervisorOrAdmin() {
+		sup, ok, verr := s.staff.ResolveSupervisorByPIN(ctx, storeID, in.SupervisorPin)
+		if verr != nil {
+			return DTO{}, false, verr
+		}
+		if !ok {
+			return DTO{}, false, httpx.Forbidden("Diskon melebihi batas; butuh PIN supervisor yang valid.")
+		}
+		approvedBy = sup.Name
 	}
 
 	// Kasir tidak memakai payment gateway → gateway fee 0; service 2% + PPN tetap berlaku.
@@ -205,7 +231,7 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 		newID, rerr := s.sales.RecordSale(ctx, salesclient.RecordSaleInput{
 			StoreID: storeID, Source: "cashier", PaymentMethod: in.PaymentMethod, OrderType: in.OrderType,
 			TableID: strings.TrimSpace(in.TableID), CashierID: cashierID, ShiftID: shiftID,
-			DiscountApprovedBy: strings.TrimSpace(in.DiscountApprovedBy),
+			DiscountApprovedBy: approvedBy,
 			CustomerNote:       strings.TrimSpace(in.CustomerNote),
 			Items:              items,
 			Subtotal:           subtotal,
@@ -239,6 +265,87 @@ func (s *Service) Create(ctx context.Context, p authcontract.Principal, idemKey,
 	return dto, true, err
 }
 
+// Void membatalkan transaksi: restock item + tandai 'voided' secara atomik. Hanya transaksi
+// TUNAI pada SHIFT BERJALAN yang bisa dibatalkan (agar shift tertutup tidak berubah). Kasir
+// butuh PIN supervisor (diverifikasi server); supervisor/admin override otomatis. Begitu status
+// jadi 'voided', transaksi otomatis keluar dari rekonsiliasi shift & laporan (query memfilter
+// status='completed').
+func (s *Service) Void(ctx context.Context, p authcontract.Principal, txID string, in VoidInput) (DTO, error) {
+	storeID := p.StoreID
+
+	t, err := s.repo.Get(ctx, storeID, txID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DTO{}, httpx.NotFound("Transaksi tidak ditemukan.")
+	}
+	if err != nil {
+		return DTO{}, err
+	}
+	if t.Status != sqlcgen.TransactionsStatusCompleted {
+		return DTO{}, httpx.Conflict("Transaksi ini sudah dibatalkan atau tidak dapat dibatalkan.")
+	}
+	if t.PaymentMethod != sqlcgen.TransactionsPaymentMethodCash {
+		return DTO{}, httpx.Unprocessable("Hanya transaksi tunai yang bisa dibatalkan di kasir. Untuk QRIS ajukan refund lewat admin.")
+	}
+
+	// Hanya transaksi pada shift yang masih BERJALAN yang dapat dibatalkan.
+	openShiftID, err := s.shifts.CurrentOpenID(ctx, storeID)
+	if err != nil {
+		return DTO{}, err
+	}
+	if !t.ShiftID.Valid || t.ShiftID.String == "" || t.ShiftID.String != openShiftID {
+		return DTO{}, httpx.Conflict("Hanya transaksi pada shift berjalan yang dapat dibatalkan.")
+	}
+
+	// Otorisasi: supervisor/admin langsung (tercatat sebagai pelaku); kasir butuh PIN supervisor
+	// (diverifikasi server, dan supervisor itulah yang tercatat sebagai pemberi otorisasi).
+	voidedBy := p.SubjectID
+	if !p.IsSupervisorOrAdmin() {
+		sup, ok, verr := s.staff.ResolveSupervisorByPIN(ctx, storeID, in.SupervisorPin)
+		if verr != nil {
+			return DTO{}, verr
+		}
+		if !ok {
+			return DTO{}, httpx.Forbidden("Pembatalan butuh PIN supervisor yang valid.")
+		}
+		voidedBy = sup.ID
+	}
+
+	items, err := s.repo.Items(ctx, txID)
+	if err != nil {
+		return DTO{}, err
+	}
+
+	// Atomik: kembalikan stok tiap item (yang masih punya produk) + tandai voided.
+	err = s.uow.Run(ctx, func(ctx context.Context) error {
+		for _, it := range items {
+			if !it.ProductID.Valid || it.ProductID.String == "" {
+				continue
+			}
+			if rerr := s.products.Increase(ctx, storeID, it.ProductID.String, it.Quantity); rerr != nil {
+				return rerr
+			}
+		}
+		ok, verr := s.sales.VoidSale(ctx, salesclient.VoidSaleInput{
+			StoreID: storeID, TxID: txID, VoidedBy: voidedBy, Reason: strings.TrimSpace(in.Reason),
+		})
+		if verr != nil {
+			return verr
+		}
+		if !ok {
+			return errVoidConflict
+		}
+		return nil
+	})
+	if errors.Is(err, errVoidConflict) {
+		return DTO{}, httpx.Conflict("Transaksi sudah dibatalkan.")
+	}
+	if err != nil {
+		return DTO{}, err
+	}
+
+	return s.getDTO(ctx, storeID, txID)
+}
+
 func (s *Service) Get(ctx context.Context, storeID, txID string) (DTO, error) {
 	return s.getDTO(ctx, storeID, txID)
 }
@@ -270,18 +377,13 @@ func (s *Service) getDTO(ctx context.Context, storeID, txID string) (DTO, error)
 	return toDTO(t, items), nil
 }
 
-// loadSettings membaca settings via kontrak settingsclient; default aman (fail-open) bila
-// gagal baca — fitur dibiarkan AKTIF agar error DB transien tidak memblokir penjualan QRIS.
-func (s *Service) loadSettings(ctx context.Context, storeID string) settingsclient.Settings {
-	cfg, err := s.settings.Get(ctx, storeID)
-	if err != nil {
-		return settingsclient.Settings{
-			MaxDiscountPercent: 10, MaxOperationalExpense: 200000, CashVarianceTolerance: 5000,
-			FeatureSelfOrder: true, FeatureQris: true, FeaturePayAtCashier: true,
-			ServicePercent: 2, TaxPercent: 11, TaxEnabled: false,
-		}
-	}
-	return cfg
+// loadSettings membaca settings via kontrak settingsclient. settingsclient.Get SUDAH
+// mengembalikan default aman saat baris settings belum ada (toko baru) TANPA error, jadi error di
+// sini berarti kegagalan DB sungguhan. Dalam kasus itu kita TIDAK fail-open: melanjutkan dengan
+// default bisa diam-diam menjatuhkan PPN ke 0 atau melewati backstop QRIS (salah tagih). Lebih baik
+// gagalkan penjualan — toh tulisan UoW berikutnya ke DB yang sama akan gagal juga.
+func (s *Service) loadSettings(ctx context.Context, storeID string) (settingsclient.Settings, error) {
+	return s.settings.Get(ctx, storeID)
 }
 
 func controlPolicyFrom(cfg settingsclient.Settings) shareddomain.ControlPolicy {
@@ -301,7 +403,11 @@ func toDTO(t sqlcgen.Transaction, items []sqlcgen.TransactionItem) DTO {
 		ServiceCharge: t.ServiceCharge, GatewayFee: t.GatewayFee, ServiceLine: t.ServiceCharge + t.GatewayFee,
 		Total:          t.Total,
 		AmountReceived: t.AmountReceived, ChangeAmount: t.ChangeAmount, CustomerNote: t.CustomerNote.String,
-		CreatedAt: t.CreatedAt, Items: []ItemDTO{},
+		VoidReason: t.VoidReason.String,
+		CreatedAt:  t.CreatedAt, Items: []ItemDTO{},
+	}
+	if t.VoidedAt.Valid {
+		d.VoidedAt = &t.VoidedAt.Time
 	}
 	for _, it := range items {
 		d.Items = append(d.Items, ItemDTO{

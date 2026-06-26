@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -161,7 +162,11 @@ func (g *midtransGateway) verifyWebhook(_ http.Header, body []byte) bool {
 		return false
 	}
 	sum := sha512.Sum512([]byte(p.OrderID + p.StatusCode + p.GrossAmount + g.serverKey))
-	return strings.EqualFold(hex.EncodeToString(sum[:]), strings.TrimSpace(p.SignatureKey))
+	// Bandingkan konstan-waktu (anti timing attack). gross_amount sudah ikut ditandatangani,
+	// jadi nominal tak bisa dipalsukan tanpa menggagalkan signature ini.
+	expected := hex.EncodeToString(sum[:])
+	got := strings.ToLower(strings.TrimSpace(p.SignatureKey))
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(got)) == 1
 }
 
 func (g *midtransGateway) parseWebhook(body []byte) (paymentclient.WebhookEvent, error) {

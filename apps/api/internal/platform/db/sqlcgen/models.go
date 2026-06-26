@@ -1080,6 +1080,9 @@ type Transaction struct {
 	CreatedAt          time.Time                 `json:"createdAt"`
 	ServiceCharge      int64                     `json:"serviceCharge"`
 	GatewayFee         int64                     `json:"gatewayFee"`
+	VoidedAt           sql.NullTime              `json:"voidedAt"`
+	VoidedBy           sql.NullString            `json:"voidedBy"`
+	VoidReason         sql.NullString            `json:"voidReason"`
 }
 
 type TransactionItem struct {

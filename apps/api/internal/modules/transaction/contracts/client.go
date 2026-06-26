@@ -44,9 +44,21 @@ type RecordSaleInput struct {
 	RequestHash        string
 }
 
+// VoidSaleInput memuat data pembatalan satu transaksi (void).
+type VoidSaleInput struct {
+	StoreID  string
+	TxID     string
+	VoidedBy string // staf yang mengotorisasi (supervisor/admin) — "" = NULL
+	Reason   string
+}
+
 // Client adalah kontrak yang dipublikasikan modul transaction.
 type Client interface {
 	// RecordSale menyisipkan transaksi + item (+ idempotency bila ada) dan mengembalikan
 	// id transaksi. Harus dipanggil di dalam uow.Run agar atomik dengan langkah lain.
 	RecordSale(ctx context.Context, in RecordSaleInput) (txID string, err error)
+	// VoidSale menandai transaksi 'completed' menjadi 'voided' (status reversal). Harus
+	// dipanggil di dalam uow.Run agar atomik dengan restock. ok=false bila tak ada baris
+	// 'completed' yang cocok (sudah dibatalkan / tak ditemukan).
+	VoidSale(ctx context.Context, in VoidSaleInput) (ok bool, err error)
 }

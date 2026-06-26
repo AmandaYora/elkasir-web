@@ -38,6 +38,14 @@ func (h *Handler) Routes(r chi.Router) {
 			r.Use(authcontract.RequireActor(authcontract.ActorStaff))
 			r.Post("/", h.create)
 		})
+
+		// Void (pembatalan) menyasar transaksi pada shift POS yang berjalan. Boleh oleh staf POS
+		// (kasir butuh PIN supervisor; supervisor langsung) ATAU owner/admin web. Viewer/manager
+		// ditolak. Otorisasi PIN ditegakkan di service.
+		r.Group(func(r chi.Router) {
+			r.Use(authcontract.RequireStaffOrAdmin("owner", "admin"))
+			r.Post("/{id}/void", h.void)
+		})
 	})
 }
 
@@ -74,6 +82,20 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, dto)
+}
+
+func (h *Handler) void(w http.ResponseWriter, r *http.Request) {
+	var in application.VoidInput
+	if err := httpx.DecodeJSON(w, r, &in); err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	dto, err := h.svc.Void(r.Context(), authcontract.MustPrincipal(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, dto, "Transaksi dibatalkan")
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {

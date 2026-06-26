@@ -16,7 +16,10 @@ import {
 } from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
 import { Drawer } from "@/shared/components/ui/drawer";
+import { MoneyInput } from "@/shared/components/ui/money-input";
+import { FieldError } from "@/shared/components/ui/field-error";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
+import { zodFieldErrors } from "@/shared/lib/form";
 import { formatIDR, formatDateTime } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { withdrawalsService } from "@/modules/withdrawals/services/withdrawals.service";
@@ -47,8 +50,8 @@ export default function WithdrawalsPage() {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text">Penarikan Dana Settlement</h2>
-          <p className="text-sm text-muted">Tarik dana settlement ke rekening bank Anda.</p>
+          <h2 className="text-lg font-semibold text-text">Penarikan Dana</h2>
+          <p className="text-sm text-muted">Tarik dana hasil penjualan ke rekening bank Anda.</p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" /> Ajukan Penarikan
@@ -76,10 +79,7 @@ export default function WithdrawalsPage() {
         {withdrawalsQuery.loading ? (
           <LoadingState />
         ) : withdrawalsQuery.error ? (
-          <ErrorState
-            message={`Gagal memuat penarikan. ${withdrawalsQuery.error}`}
-            onRetry={refresh}
-          />
+          <ErrorState message="Gagal memuat penarikan. Coba lagi." onRetry={refresh} />
         ) : items.length === 0 ? (
           <EmptyState title="Belum ada penarikan." description="Ajukan penarikan pertama Anda." />
         ) : (
@@ -209,11 +209,16 @@ function WithdrawalForm({ onDone }: { onDone: () => void }) {
     holder: "",
   });
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = <K extends keyof WithdrawalInput>(key: K, value: WithdrawalInput[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => (e[key] ? { ...e, [key]: "" } : e));
+  };
 
   const submit = async () => {
     const parsed = withdrawalSchema.safeParse(form);
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
     setBusy(true);
@@ -222,7 +227,7 @@ function WithdrawalForm({ onDone }: { onDone: () => void }) {
       toast.success("Penarikan berhasil diajukan");
       onDone();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mengajukan penarikan");
+      toast.error("Gagal mengajukan penarikan. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -232,38 +237,48 @@ function WithdrawalForm({ onDone }: { onDone: () => void }) {
     <div className="grid gap-4">
       <div className="grid gap-2">
         <Label>Jumlah (IDR)</Label>
-        <Input
-          type="number"
+        <MoneyInput
           placeholder="0"
-          value={form.amount || ""}
-          onChange={(e) => setForm({ ...form, amount: Math.trunc(+e.target.value) })}
+          value={form.amount}
+          onChange={(n) => set("amount", n)}
+          aria-invalid={!!errors.amount}
         />
+        <FieldError msg={errors.amount} />
       </div>
       <div className="grid gap-2">
         <Label>Bank</Label>
-        <Select value={form.bank} onChange={(e) => setForm({ ...form, bank: e.target.value })}>
+        <Select
+          value={form.bank}
+          onChange={(e) => set("bank", e.target.value)}
+          aria-invalid={!!errors.bank}
+        >
           <option value="">Pilih bank</option>
           <option value="BCA">BCA</option>
           <option value="Mandiri">Mandiri</option>
           <option value="BNI">BNI</option>
           <option value="BRI">BRI</option>
         </Select>
+        <FieldError msg={errors.bank} />
       </div>
       <div className="grid gap-2">
         <Label>Nomor Rekening</Label>
         <Input
           placeholder="**** ****"
           value={form.account}
-          onChange={(e) => setForm({ ...form, account: e.target.value })}
+          onChange={(e) => set("account", e.target.value)}
+          aria-invalid={!!errors.account}
         />
+        <FieldError msg={errors.account} />
       </div>
       <div className="grid gap-2">
         <Label>Pemilik Rekening</Label>
         <Input
           placeholder="Nama lengkap"
           value={form.holder}
-          onChange={(e) => setForm({ ...form, holder: e.target.value })}
+          onChange={(e) => set("holder", e.target.value)}
+          aria-invalid={!!errors.holder}
         />
+        <FieldError msg={errors.holder} />
       </div>
       <div className="flex justify-end">
         <Button loading={busy} onClick={submit}>

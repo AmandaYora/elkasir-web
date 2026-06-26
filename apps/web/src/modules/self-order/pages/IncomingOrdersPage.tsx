@@ -72,7 +72,7 @@ export default function IncomingOrdersPage() {
       toast.success(`Pesanan Meja ${updated.tableName} → ${ORDER_STAGE_LABEL[updated.status]}`);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Terjadi kesalahan. Coba lagi.");
+      toast.error("Gagal memperbarui pesanan. Coba lagi.");
     } finally {
       setAdvancingId(null);
     }
@@ -114,7 +114,7 @@ export default function IncomingOrdersPage() {
         {ordersQuery.loading ? (
           <LoadingState />
         ) : ordersQuery.error ? (
-          <ErrorState message={ordersQuery.error} onRetry={refresh} />
+          <ErrorState message="Gagal memuat pesanan. Coba lagi." onRetry={refresh} />
         ) : filtered.length === 0 ? (
           <EmptyState title="Tidak ada pesanan" description="Tidak ada pesanan pada filter ini." />
         ) : (
@@ -231,7 +231,7 @@ function RedeemForm({ onRedeemed, onClose }: { onRedeemed: () => void; onClose: 
       setFound(order);
     } catch (e) {
       setFound(null);
-      toast.error(e instanceof Error ? e.message : "Terjadi kesalahan. Coba lagi.");
+      toast.error("Kode klaim tidak ditemukan. Periksa lalu coba lagi.");
     } finally {
       setSearching(false);
     }
@@ -247,8 +247,8 @@ function RedeemForm({ onRedeemed, onClose }: { onRedeemed: () => void; onClose: 
         `Pesanan Meja ${result.order.tableName} diproses · ${formatIDR(result.order.total)} tunai`,
       );
       onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Terjadi kesalahan. Coba lagi.");
+    } catch {
+      toast.error("Gagal memproses pesanan. Coba lagi.");
     } finally {
       setProcessing(false);
     }

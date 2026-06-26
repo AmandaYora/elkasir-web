@@ -9,6 +9,7 @@ import (
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
 	"github.com/elkasir/api/internal/modules/shift/infrastructure"
 	"github.com/elkasir/api/internal/modules/shift/presentation"
+	staffclient "github.com/elkasir/api/internal/modules/staff/contracts"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 	"github.com/elkasir/api/internal/platform/uow"
 )
@@ -20,10 +21,11 @@ type Module struct {
 }
 
 // New assembles the shift module: repo → service → handler, plus the tx-aware contract
-// client that other modules consume.
-func New(pool *sql.DB, q *sqlcgen.Queries, uowMgr *uow.Manager, auth authcontract.Authenticator) *Module {
+// client that other modules consume. staffClient verifies the supervisor PIN when a cashier
+// closes a shift with an over-tolerance cash variance.
+func New(pool *sql.DB, q *sqlcgen.Queries, uowMgr *uow.Manager, auth authcontract.Authenticator, staffClient staffclient.Client) *Module {
 	repo := infrastructure.NewRepo(pool, q)
-	svc := application.NewService(repo)
+	svc := application.NewService(repo, staffClient)
 	return &Module{
 		Handler: presentation.NewHandler(svc, auth),
 		Client:  infrastructure.NewClient(uowMgr),

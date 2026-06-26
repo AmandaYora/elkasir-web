@@ -21,6 +21,14 @@ SELECT * FROM transactions WHERE id = ? AND store_id = ? LIMIT 1;
 -- name: ListTransactionItems :many
 SELECT * FROM transaction_items WHERE transaction_id = ? ORDER BY created_at ASC;
 
+-- Batalkan transaksi (void). Hanya transaksi 'completed' yang bisa dibatalkan; 0 rows =
+-- tidak ditemukan / sudah dibatalkan. Pengecualian (tunai, dalam shift) ditegakkan di service.
+-- name: VoidTransaction :execrows
+UPDATE transactions
+SET status = 'voided', voided_at = sqlc.arg(voided_at), voided_by = sqlc.arg(voided_by),
+    void_reason = sqlc.arg(void_reason)
+WHERE id = sqlc.arg(id) AND store_id = sqlc.arg(store_id) AND status = 'completed';
+
 -- Kurangi stok dengan penjaga stok >= qty (cegah stok negatif). 0 rows = gagal.
 -- name: DecrementStock :execrows
 UPDATE products SET stock = stock - sqlc.arg(qty)

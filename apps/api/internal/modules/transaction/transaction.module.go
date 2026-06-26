@@ -10,6 +10,7 @@ import (
 	productclient "github.com/elkasir/api/internal/modules/product/contracts"
 	settingsclient "github.com/elkasir/api/internal/modules/settings/contracts"
 	shiftclient "github.com/elkasir/api/internal/modules/shift/contracts"
+	staffclient "github.com/elkasir/api/internal/modules/staff/contracts"
 	"github.com/elkasir/api/internal/modules/transaction/application"
 	salesclient "github.com/elkasir/api/internal/modules/transaction/contracts"
 	"github.com/elkasir/api/internal/modules/transaction/infrastructure"
@@ -28,10 +29,11 @@ type Module struct {
 // It builds its own sales client internally and consumes the product & shift contracts to
 // orchestrate an atomic cashier sale via the unit-of-work.
 func New(pool *sql.DB, q *sqlcgen.Queries, uowMgr *uow.Manager, auth authcontract.Authenticator,
-	productClient productclient.Client, shiftClient shiftclient.Client, settingsClient settingsclient.Client) *Module {
+	productClient productclient.Client, shiftClient shiftclient.Client, settingsClient settingsclient.Client,
+	staffClient staffclient.Client) *Module {
 	repo := infrastructure.NewRepo(pool, q)
 	salesClient := infrastructure.NewSalesClient(uowMgr)
-	svc := application.NewService(repo, productClient, shiftClient, salesClient, settingsClient, uowMgr)
+	svc := application.NewService(repo, productClient, shiftClient, salesClient, settingsClient, staffClient, uowMgr)
 	return &Module{
 		Handler:     presentation.NewHandler(svc, auth),
 		SalesClient: salesClient,

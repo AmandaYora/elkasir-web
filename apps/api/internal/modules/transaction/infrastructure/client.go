@@ -66,6 +66,20 @@ func (a *salesAdapter) RecordSale(ctx context.Context, in salesclient.RecordSale
 	return txID, nil
 }
 
+func (a *salesAdapter) VoidSale(ctx context.Context, in salesclient.VoidSaleInput) (bool, error) {
+	n, err := a.uow.Q(ctx).VoidTransaction(ctx, sqlcgen.VoidTransactionParams{
+		VoidedAt:   sql.NullTime{Time: time.Now().UTC(), Valid: true},
+		VoidedBy:   nullStr(in.VoidedBy),
+		VoidReason: nullStr(in.Reason),
+		ID:         in.TxID,
+		StoreID:    in.StoreID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // orderType memetakan string order type ke enum sqlc.
 func orderType(s string) sqlcgen.TransactionsOrderType {
 	if s == "dineIn" {

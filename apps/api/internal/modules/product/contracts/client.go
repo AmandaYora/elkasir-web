@@ -24,6 +24,9 @@ type Client interface {
 	GetForSale(ctx context.Context, storeID, productID string) (ProductSale, error) // getById()
 	ListActive(ctx context.Context, storeID string) ([]ProductSale, error)          // search() / menu
 	Decrease(ctx context.Context, storeID, productID string, qty int32) error       // decrease() — tx-aware
+	// Increase atomically restocks (e.g. when a sale is voided) — tx-aware. Best-effort: a
+	// missing product (deleted since the sale) is a no-op, not an error.
+	Increase(ctx context.Context, storeID, productID string, qty int32) error
 }
 
 var (

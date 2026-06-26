@@ -16,6 +16,8 @@ import {
   TableCell,
 } from "@/shared/components/ui/table";
 import { Modal } from "@/shared/components/ui/modal";
+import { FieldError } from "@/shared/components/ui/field-error";
+import { zodFieldErrors } from "@/shared/lib/form";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { Pagination } from "@/shared/components/ui/pagination";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
@@ -75,7 +77,7 @@ export default function TablesPage() {
       setEditing(null);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan meja");
+      toast.error("Gagal menyimpan meja. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -96,7 +98,7 @@ export default function TablesPage() {
       toast.success("Meja berhasil diperbarui");
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memperbarui meja");
+      toast.error("Gagal memperbarui meja. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -180,7 +182,7 @@ export default function TablesPage() {
         {tablesQuery.loading ? (
           <LoadingState />
         ) : tablesQuery.error ? (
-          <ErrorState message={tablesQuery.error} onRetry={refresh} />
+          <ErrorState message="Gagal memuat meja. Coba lagi." onRetry={refresh} />
         ) : paged.length === 0 ? (
           <EmptyState title="Belum ada meja" description="Tambahkan meja pertama Anda." />
         ) : (
@@ -316,6 +318,11 @@ function TableForm({
     seats: String(editing?.seats ?? 2),
     status: (editing?.status ?? "active") as TableStatus,
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => (e[key] ? { ...e, [key]: "" } : e));
+  };
 
   const submit = () => {
     const code = form.code.trim();
@@ -329,11 +336,11 @@ function TableForm({
     };
     const parsed = tableSchema.safeParse(body);
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
     if (existing.some((t) => t.id !== editing?.id && t.code.toLowerCase() === code.toLowerCase())) {
-      toast.error("Kode meja sudah dipakai");
+      setErrors({ code: "Kode meja sudah dipakai" });
       return;
     }
     onSubmit(body);
@@ -345,22 +352,26 @@ function TableForm({
         <Label>Kode Meja</Label>
         <Input
           value={form.code}
-          onChange={(e) => setForm({ ...form, code: e.target.value })}
+          onChange={(e) => set("code", e.target.value)}
           placeholder="mis. A3"
+          aria-invalid={!!errors.code}
         />
+        <FieldError msg={errors.code} />
       </div>
       <div className="grid gap-2">
         <Label>Nama Tampilan</Label>
         <Input
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => set("name", e.target.value)}
           placeholder="mis. A3 (opsional, default = kode)"
+          aria-invalid={!!errors.name}
         />
+        <FieldError msg={errors.name} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-2">
           <Label>Area</Label>
-          <Select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}>
+          <Select value={form.area} onChange={(e) => set("area", e.target.value)}>
             <option value="Indoor">Indoor</option>
             <option value="Outdoor">Outdoor</option>
             <option value="Private">Private</option>
@@ -371,16 +382,15 @@ function TableForm({
           <Input
             type="number"
             value={form.seats}
-            onChange={(e) => setForm({ ...form, seats: e.target.value })}
+            onChange={(e) => set("seats", e.target.value)}
+            aria-invalid={!!errors.seats}
           />
+          <FieldError msg={errors.seats} />
         </div>
       </div>
       <div className="grid gap-2">
         <Label>Status</Label>
-        <Select
-          value={form.status}
-          onChange={(e) => setForm({ ...form, status: e.target.value as TableStatus })}
-        >
+        <Select value={form.status} onChange={(e) => set("status", e.target.value as TableStatus)}>
           <option value="active">Aktif</option>
           <option value="inactive">Nonaktif</option>
         </Select>

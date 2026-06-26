@@ -12,13 +12,19 @@ import (
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	"github.com/elkasir/api/internal/modules/shift/domain"
 	"github.com/elkasir/api/internal/modules/shift/infrastructure"
+	staffclient "github.com/elkasir/api/internal/modules/staff/contracts"
 	"github.com/elkasir/api/internal/platform/httpx"
 	"github.com/elkasir/api/internal/platform/id"
 )
 
-type Service struct{ repo *infrastructure.Repo }
+type Service struct {
+	repo  *infrastructure.Repo
+	staff staffclient.Client
+}
 
-func NewService(repo *infrastructure.Repo) *Service { return &Service{repo: repo} }
+func NewService(repo *infrastructure.Repo, staffClient staffclient.Client) *Service {
+	return &Service{repo: repo, staff: staffClient}
+}
 
 // DTO is the API representation of a shift (camelCase).
 type DTO struct {
@@ -120,10 +126,18 @@ func (s *Service) Close(ctx context.Context, p authcontract.Principal, shiftID s
 
 	policy := s.controlPolicy(ctx, storeID)
 	// Selisih kas di atas toleransi butuh persetujuan supervisor — kecuali yang menutup SUDAH
-	// supervisor/admin (override otomatis). PIN supervisor diverifikasi di klien; namanya
-	// tercatat di closeApprovedBy (audit).
-	if policy.VarianceNeedsApproval(variance) && !p.IsSupervisorOrAdmin() && strings.TrimSpace(in.CloseApprovedBy) == "" {
-		return DTO{}, httpx.Forbidden("Selisih kas melebihi toleransi; butuh persetujuan supervisor (PIN).")
+	// supervisor/admin (override otomatis). Untuk kasir, PIN supervisor diverifikasi DI SERVER
+	// (anti-spoof): nama di closeApprovedBy berasal dari hasil resolusi PIN, bukan string klien.
+	approvedBy := strings.TrimSpace(in.CloseApprovedBy)
+	if policy.VarianceNeedsApproval(variance) && !p.IsSupervisorOrAdmin() {
+		sup, ok, verr := s.staff.ResolveSupervisorByPIN(ctx, storeID, in.SupervisorPin)
+		if verr != nil {
+			return DTO{}, verr
+		}
+		if !ok {
+			return DTO{}, httpx.Forbidden("Selisih kas melebihi toleransi; butuh PIN supervisor yang valid.")
+		}
+		approvedBy = sup.Name
 	}
 
 	n, err := s.repo.Close(ctx, infrastructure.CloseParams{
@@ -139,7 +153,7 @@ func (s *Service) Close(ctx context.Context, p authcontract.Principal, shiftID s
 		ExpectedCash:      expected,
 		ActualCash:        in.ActualCash,
 		Variance:          variance,
-		CloseApprovedBy:   in.CloseApprovedBy,
+		CloseApprovedBy:   approvedBy,
 		ClosedAt:          time.Now().UTC(),
 	})
 	if err != nil {

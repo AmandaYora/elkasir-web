@@ -215,7 +215,7 @@ func (q *Queries) GetProductForSale(ctx context.Context, arg GetProductForSalePa
 }
 
 const getTransaction = `-- name: GetTransaction :one
-SELECT id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source, payment_method, status, subtotal, discount, tax, total, amount_received, change_amount, discount_approved_by, customer_note, created_at, service_charge, gateway_fee FROM transactions WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, code, shift_id, table_id, self_order_id, cashier_id, order_type, source, payment_method, status, subtotal, discount, tax, total, amount_received, change_amount, discount_approved_by, customer_note, created_at, service_charge, gateway_fee, voided_at, voided_by, void_reason FROM transactions WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetTransactionParams struct {
@@ -249,6 +249,9 @@ func (q *Queries) GetTransaction(ctx context.Context, arg GetTransactionParams) 
 		&i.CreatedAt,
 		&i.ServiceCharge,
 		&i.GatewayFee,
+		&i.VoidedAt,
+		&i.VoidedBy,
+		&i.VoidReason,
 	)
 	return i, err
 }
@@ -289,4 +292,35 @@ func (q *Queries) ListTransactionItems(ctx context.Context, transactionID string
 		return nil, err
 	}
 	return items, nil
+}
+
+const voidTransaction = `-- name: VoidTransaction :execrows
+UPDATE transactions
+SET status = 'voided', voided_at = ?, voided_by = ?,
+    void_reason = ?
+WHERE id = ? AND store_id = ? AND status = 'completed'
+`
+
+type VoidTransactionParams struct {
+	VoidedAt   sql.NullTime   `json:"voidedAt"`
+	VoidedBy   sql.NullString `json:"voidedBy"`
+	VoidReason sql.NullString `json:"voidReason"`
+	ID         string         `json:"id"`
+	StoreID    string         `json:"storeId"`
+}
+
+// Batalkan transaksi (void). Hanya transaksi 'completed' yang bisa dibatalkan; 0 rows =
+// tidak ditemukan / sudah dibatalkan. Pengecualian (tunai, dalam shift) ditegakkan di service.
+func (q *Queries) VoidTransaction(ctx context.Context, arg VoidTransactionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, voidTransaction,
+		arg.VoidedAt,
+		arg.VoidedBy,
+		arg.VoidReason,
+		arg.ID,
+		arg.StoreID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

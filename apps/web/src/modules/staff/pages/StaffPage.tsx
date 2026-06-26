@@ -78,7 +78,7 @@ export default function StaffPage() {
       setDeleting(null);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus staf");
+      toast.error("Gagal menghapus staf. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -122,7 +122,7 @@ export default function StaffPage() {
         {staffQuery.loading ? (
           <LoadingState label="Memuat staf…" />
         ) : staffQuery.error ? (
-          <ErrorState message={`Gagal memuat staf. ${staffQuery.error}`} onRetry={refresh} />
+          <ErrorState message="Gagal memuat staf. Coba lagi." onRetry={refresh} />
         ) : data.length === 0 ? (
           <EmptyState title="Belum ada staf" description="Tambahkan anggota tim pertama Anda." />
         ) : (
@@ -299,7 +299,7 @@ function StaffForm({
       }
       onDone(created);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan staf");
+      toast.error("Gagal menyimpan staf. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -401,7 +401,7 @@ function ResetPasswordModal({ target, onClose }: { target: Staff | null; onClose
       setPassword("");
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mereset password");
+      toast.error("Gagal mereset password. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -463,7 +463,7 @@ function SetPinModal({ target, onClose }: { target: Staff | null; onClose: () =>
       toast.success(clear ? "PIN dihapus" : "PIN supervisor disimpan");
       close();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan PIN");
+      toast.error("Gagal menyimpan PIN. Coba lagi.");
     } finally {
       setBusy(false);
     }

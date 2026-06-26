@@ -119,7 +119,7 @@ export default function ShiftsPage() {
           <LoadingState />
         ) : shiftsQuery.error ? (
           <ErrorState
-            message={`Gagal memuat shift. ${shiftsQuery.error}`}
+            message="Gagal memuat shift. Coba lagi."
             onRetry={() => shiftsQuery.refetch()}
           />
         ) : items.length === 0 ? (
@@ -206,7 +206,7 @@ function ShiftDetail({ id }: { id: string }) {
   if (detailQuery.error)
     return (
       <ErrorState
-        message={`Gagal memuat detail shift. ${detailQuery.error}`}
+        message="Gagal memuat detail shift. Coba lagi."
         onRetry={() => detailQuery.refetch()}
       />
     );

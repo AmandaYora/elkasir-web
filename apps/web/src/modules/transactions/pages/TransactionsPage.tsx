@@ -1,8 +1,13 @@
 import { useMemo, useState } from "react";
-import { Search, CreditCard, Banknote } from "lucide-react";
+import { Search, CreditCard, Banknote, Ban } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { Select } from "@/shared/components/ui/select";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { useAuthStore } from "@/shared/stores/auth.store";
 import {
   Table,
   TableHeader,
@@ -97,6 +102,7 @@ export default function TransactionsPage() {
             >
               <option value="all">Semua status</option>
               <option value="completed">Selesai</option>
+              <option value="voided">Dibatalkan</option>
             </Select>
             <Select
               value={method}
@@ -131,7 +137,7 @@ export default function TransactionsPage() {
           <LoadingState />
         ) : transactionsQuery.error ? (
           <ErrorState
-            message={`Gagal memuat transaksi. ${transactionsQuery.error}`}
+            message="Gagal memuat transaksi. Coba lagi."
             onRetry={() => transactionsQuery.refetch()}
           />
         ) : paged.length === 0 ? (
@@ -205,30 +211,69 @@ export default function TransactionsPage() {
         title="Detail Transaksi"
         description="Rincian item dan pembayaran"
       >
-        {detailId && <TransactionDetail id={detailId} />}
+        {detailId && (
+          <TransactionDetail
+            id={detailId}
+            onVoided={() => {
+              transactionsQuery.refetch();
+              setDetailId(null);
+            }}
+          />
+        )}
       </Drawer>
     </div>
   );
 }
 
-function TransactionDetail({ id }: { id: string }) {
+function TransactionDetail({ id, onVoided }: { id: string; onVoided: () => void }) {
   const detailQuery = useAsync(() => transactionsService.get(id), [id]);
 
   if (detailQuery.loading) return <LoadingState />;
   if (detailQuery.error)
     return (
       <ErrorState
-        message={`Gagal memuat detail transaksi. ${detailQuery.error}`}
+        message="Gagal memuat detail transaksi. Coba lagi."
         onRetry={() => detailQuery.refetch()}
       />
     );
   const detail = detailQuery.data;
   if (!detail) return null;
 
-  return <TransactionDetailContent detail={detail} />;
+  return <TransactionDetailContent detail={detail} onVoided={onVoided} />;
 }
 
-function TransactionDetailContent({ detail }: { detail: Transaction }) {
+function TransactionDetailContent({
+  detail,
+  onVoided,
+}: {
+  detail: Transaction;
+  onVoided: () => void;
+}) {
+  const role = useAuthStore((s) => s.user?.role);
+  // Void hanya untuk owner/admin dari web, atas transaksi TUNAI yang masih 'completed'. Aturan
+  // "harus pada shift berjalan" ditegakkan server — bila bukan, muncul pesan jelas saat dicoba.
+  const canVoid =
+    (role === "owner" || role === "admin") &&
+    detail.status === "completed" &&
+    detail.paymentMethod === "cash";
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const doVoid = async () => {
+    setBusy(true);
+    try {
+      await transactionsService.void(detail.id, reason.trim());
+      toast.success("Transaksi dibatalkan");
+      onVoided();
+    } catch (e) {
+      toast.error("Gagal membatalkan transaksi. Coba lagi.");
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -240,6 +285,16 @@ function TransactionDetailContent({ detail }: { detail: Transaction }) {
         <TransactionStatusBadge status={detail.status} />
         <span className="text-2xl font-semibold tracking-tight">{formatIDR(detail.total)}</span>
       </div>
+
+      {detail.status === "voided" && (
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm">
+          <div className="font-medium text-danger">Transaksi dibatalkan</div>
+          {detail.voidedAt && (
+            <div className="mt-0.5 text-xs text-muted">{formatDateTime(detail.voidedAt)}</div>
+          )}
+          {detail.voidReason && <div className="mt-1 text-muted">Alasan: {detail.voidReason}</div>}
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface-muted">
         <div className="border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-muted">
@@ -318,6 +373,38 @@ function TransactionDetailContent({ detail }: { detail: Transaction }) {
           </>
         )}
       </div>
+
+      {canVoid && (
+        <div className="space-y-2 rounded-xl border border-danger/30 p-4">
+          <div className="text-xs font-medium uppercase tracking-wider text-danger">
+            Batalkan Transaksi
+          </div>
+          <p className="text-xs text-muted">
+            Hanya transaksi tunai pada shift yang masih berjalan. Stok item dikembalikan dan
+            transaksi dikeluarkan dari rekap shift &amp; laporan.
+          </p>
+          <Textarea
+            placeholder="Alasan pembatalan (opsional)"
+            rows={2}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <Button variant="danger" size="sm" onClick={() => setConfirming(true)} loading={busy}>
+            <Ban className="h-4 w-4" /> Batalkan Transaksi
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirming}
+        title={`Batalkan ${detail.code}?`}
+        description="Stok item akan dikembalikan dan transaksi dikeluarkan dari rekap shift & laporan. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Ya, batalkan"
+        danger
+        loading={busy}
+        onConfirm={doVoid}
+        onClose={() => setConfirming(false)}
+      />
     </div>
   );
 }

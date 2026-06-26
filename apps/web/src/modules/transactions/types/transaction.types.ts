@@ -29,6 +29,8 @@ export interface Transaction {
   amountReceived: number;
   changeAmount: number;
   customerNote?: string;
+  voidedAt?: string;
+  voidReason?: string;
   createdAt: string;
   items: TransactionItem[];
 }

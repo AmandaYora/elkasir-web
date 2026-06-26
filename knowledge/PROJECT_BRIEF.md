@@ -36,11 +36,12 @@ system that:
 | --- | --- | --- |
 | **Owners / Managers** | Web admin dashboard (React 19 SPA) | Manage products, categories, tables, staff, and admin users; monitor incoming self-orders; review shifts, cash movements, and withdrawals; read reports and analytics. |
 | **Customers** | Self-order pages (public web) | Scan a table QR code, browse the menu, place an order, and pay via QRIS or cash. No login required. |
-| **Cashiers** | Mobile POS app `elkasir_pos` (Flutter, **separate repo**) | Open/close shifts, take counter orders, accept payments, manage the cash drawer. Consumes the same API; not part of this repository. |
+| **Cashiers & Supervisors** | Mobile POS app `elkasir_pos` (Flutter, **sibling project `../elkasir_mobile`**) | Open/close shifts, take counter orders, accept cash/QRIS, manage the cash drawer, redeem pay-at-cashier self-orders. **Supervisors** additionally approve over-cap discounts, voids, and over-tolerance shift closes (PIN verified server-side). Consumes the same API; lives in a separate project (see `../elkasir_mobile/CLAUDE.md`). |
 
 All three surfaces talk to the **same Go API** under `/api/v1`. The web admin SPA and
 the customer self-order pages live in this repository (`apps/web`); the API lives in
-`apps/api`; the Flutter cashier app is a separate project that only consumes the API.
+`apps/api`; the Flutter cashier/supervisor app is the **sibling project `../elkasir_mobile`**
+(`elkasir_pos`) that only consumes this API — see its gateway `../elkasir_mobile/CLAUDE.md`.
 
 ## Multi-tenancy
 

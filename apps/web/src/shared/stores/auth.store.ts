@@ -80,10 +80,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       tokenStore.set(res.accessToken, res.refreshToken);
       set({ user: toSession(res.user) });
       return { ok: true };
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Tidak dapat masuk. Periksa koneksi lalu coba lagi.";
-      return { ok: false, error: message };
+    } catch {
+      return {
+        ok: false,
+        error: "Email atau password salah. Coba lagi.",
+      };
     }
   },
 

@@ -418,7 +418,10 @@ func (s *Service) SimulatePaid(ctx context.Context, soID string) error {
 	if o.PaymentStatus == sqlcgen.SelfOrdersPaymentStatusPaid {
 		return nil
 	}
-	if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", ""); err != nil {
+	// Idempotency key deterministik per self-order → mencegah penjualan ganda bila pemenuhan
+	// terpicu lebih dari sekali (webhook/simulasi balapan); replay mengembalikan hasil lama.
+	idem := "selforder-" + o.ID
+	if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, idem, idem); err != nil {
 		return err
 	}
 	s.notifyStatus(ctx, o.ID) // dorong event ke layar pelanggan (SSE)
@@ -455,7 +458,10 @@ func (s *Service) HandleWebhook(ctx context.Context, header http.Header, body []
 		o, err := s.repo.GetByID(ctx, ev.OrderRef)
 		if err == nil && o.PaymentStatus == sqlcgen.SelfOrdersPaymentStatusPending &&
 			o.PaymentMethod == sqlcgen.SelfOrdersPaymentMethodQris {
-			if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, "", ""); err != nil {
+			// Idempotency key deterministik → mencegah penjualan ganda bila callback gateway
+			// terkirim dobel/balapan (selain cek webhook_events & status pending).
+			idem := "selforder-" + o.ID
+			if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, idem, idem); err != nil {
 				return err // gagal sementara → biarkan provider retry (belum ditandai seen)
 			}
 			s.notifyStatus(ctx, o.ID) // push event lunas ke layar pelanggan (SSE) — best-effort
@@ -496,6 +502,16 @@ func (s *Service) RedeemCheckout(ctx context.Context, p authcontract.Principal, 
 	cashierID := ""
 	if p.Actor == authcontract.ActorStaff {
 		cashierID = p.SubjectID
+	}
+	// Pembayaran TUNAI di kasir harus masuk ke shift yang terbuka agar kas laci terekonsiliasi.
+	// Tanpa ini, penjualan menempel ke shift "" (NULL) dan tidak terhitung di rekap shift mana pun.
+	// (Jalur QRIS via webhook sengaja TIDAK dibatasi syarat ini — uangnya sudah masuk ke gateway.)
+	openShift, err := s.shifts.CurrentOpenID(ctx, p.StoreID)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if openShift == "" {
+		return CheckoutResult{}, httpx.Unprocessable("Buka shift dulu sebelum menerima pembayaran tunai.")
 	}
 	if err := s.fulfill(ctx, o, "cash", cashierID, sqlcgen.SelfOrdersStatusCompleted, idemKey, reqHash); err != nil {
 		return CheckoutResult{}, err

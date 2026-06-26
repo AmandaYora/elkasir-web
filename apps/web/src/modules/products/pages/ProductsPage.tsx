@@ -81,7 +81,7 @@ export default function ProductsPage() {
       setDeleting(null);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus produk");
+      toast.error("Gagal menghapus produk. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -155,7 +155,7 @@ export default function ProductsPage() {
         {productsQuery.loading ? (
           <LoadingState />
         ) : productsQuery.error ? (
-          <ErrorState message={productsQuery.error} onRetry={refresh} />
+          <ErrorState message="Gagal memuat produk. Coba lagi." onRetry={refresh} />
         ) : paged.length === 0 ? (
           <EmptyState title="Belum ada produk" description="Tambahkan produk pertama Anda." />
         ) : (
@@ -348,7 +348,7 @@ function StockAdjuster({ product, onDone }: { product: Product; onDone: (p: Prod
       setDelta(0);
       onDone(updated);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyesuaikan stok");
+      toast.error("Gagal memperbarui stok. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -417,7 +417,7 @@ function ProductForm({
       toast.success(editing ? "Produk berhasil diperbarui" : "Produk berhasil ditambahkan");
       onDone();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan produk");
+      toast.error("Gagal menyimpan produk. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -539,7 +539,7 @@ function ImageUploadField({
       onChange(res.url);
       toast.success("Gambar berhasil diunggah");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal mengunggah gambar");
+      toast.error("Gagal mengunggah gambar. Coba lagi.");
     } finally {
       setUploading(false);
       uploadingChange(false);

@@ -102,7 +102,7 @@ httpClient.interceptors.response.use(
     }
     throw new ApiError(
       error.response?.status ?? 0,
-      error.message || "Tidak dapat terhubung ke server.",
+      error.message || "Koneksi bermasalah. Periksa internet lalu coba lagi.",
     );
   },
 );

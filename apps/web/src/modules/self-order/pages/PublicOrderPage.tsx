@@ -33,7 +33,7 @@ import type {
 
 type Step = "menu" | "review" | "qris" | "cashier";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Terjadi kesalahan. Coba lagi.");
+const errMsg = (_e: unknown) => "Pesanan belum bisa diproses. Coba lagi.";
 
 // Halaman self-order pelanggan (publik, tanpa auth). Kode meja diambil dari rute.
 export default function PublicOrderPage() {
@@ -211,7 +211,7 @@ export default function PublicOrderPage() {
         <p className="text-sm text-muted">
           {notFound
             ? `QR untuk kode meja "${code}" tidak ditemukan. Silakan hubungi staf.`
-            : errMsg(menuError)}
+            : "Menu belum bisa dimuat. Coba lagi atau hubungi staf."}
         </p>
       </div>
     );

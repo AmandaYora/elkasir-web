@@ -16,6 +16,8 @@ import {
 } from "@/shared/components/ui/table";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 import { Modal } from "@/shared/components/ui/modal";
+import { FieldError } from "@/shared/components/ui/field-error";
+import { zodFieldErrors } from "@/shared/lib/form";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { formatDateTime } from "@/shared/lib/formatter";
@@ -88,7 +90,7 @@ export default function UsersPage() {
       setDeleting(null);
       refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus pengguna");
+      toast.error("Gagal menghapus pengguna. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -145,7 +147,7 @@ export default function UsersPage() {
         {usersQuery.loading ? (
           <LoadingState label="Memuat pengguna…" />
         ) : usersQuery.error ? (
-          <ErrorState message={`Gagal memuat pengguna. ${usersQuery.error}`} onRetry={refresh} />
+          <ErrorState message="Gagal memuat pengguna. Coba lagi." onRetry={refresh} />
         ) : filtered.length === 0 ? (
           <EmptyState title="Tidak ada pengguna yang cocok" />
         ) : (
@@ -262,6 +264,11 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
       : emptyForm,
   );
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => (e[key] ? { ...e, [key]: "" } : e));
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -275,7 +282,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
         };
         const parsed = adminUpdateSchema.safeParse(body);
         if (!parsed.success) {
-          toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+          setErrors(zodFieldErrors(parsed.error));
           return;
         }
         // Password baru bersifat opsional saat edit — kosongkan untuk membiarkannya.
@@ -283,7 +290,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
         if (newPassword) {
           const pw = passwordSchema.safeParse(newPassword);
           if (!pw.success) {
-            toast.error(pw.error.issues[0]?.message ?? "Periksa password.");
+            setErrors({ password: pw.error.issues[0]?.message ?? "Periksa password." });
             return;
           }
         }
@@ -303,7 +310,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
         };
         const parsed = adminCreateSchema.safeParse(body);
         if (!parsed.success) {
-          toast.error(parsed.error.issues[0]?.message ?? "Periksa input.");
+          setErrors(zodFieldErrors(parsed.error));
           return;
         }
         await usersService.create(body);
@@ -311,7 +318,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
       }
       onDone();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan pengguna");
+      toast.error("Gagal menyimpan pengguna. Coba lagi.");
     } finally {
       setBusy(false);
     }
@@ -323,24 +330,28 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
         <Label>Nama Lengkap</Label>
         <Input
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => set("name", e.target.value)}
           placeholder="mis. Sari Melati"
+          aria-invalid={!!errors.name}
         />
+        <FieldError msg={errors.name} />
       </div>
       {!editing && (
         <div className="grid gap-2">
           <Label>Username</Label>
           <Input
             value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
+            onChange={(e) => set("username", e.target.value)}
             placeholder="mis. sari"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+            aria-invalid={!!errors.username}
           />
           <p className="text-xs text-muted">
             Dipakai untuk login (selain email). Huruf kecil, angka, titik, garis bawah, atau strip.
           </p>
+          <FieldError msg={errors.username} />
         </div>
       )}
       <div className="grid gap-2">
@@ -348,23 +359,27 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
         <Input
           type="email"
           value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          onChange={(e) => set("email", e.target.value)}
           placeholder="sari@elkasir.id"
+          aria-invalid={!!errors.email}
         />
+        <FieldError msg={errors.email} />
       </div>
       <div className="grid gap-2">
         <Label>{editing ? "Password baru" : "Password"}</Label>
         <Input
           type="text"
           value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          onChange={(e) => set("password", e.target.value)}
           placeholder={editing ? "Kosongkan jika tidak diubah" : "mis. admin123"}
+          aria-invalid={!!errors.password}
         />
         {editing && (
           <p className="text-xs text-muted">
             Isi hanya jika ingin mengganti password pengguna ini.
           </p>
         )}
+        <FieldError msg={errors.password} />
       </div>
       <div className="grid gap-2">
         <Label>Peran</Label>
@@ -420,7 +435,7 @@ function ResetPasswordModal({
       setPassword("");
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mereset password");
+      toast.error("Gagal mereset password. Coba lagi.");
     } finally {
       setBusy(false);
     }
