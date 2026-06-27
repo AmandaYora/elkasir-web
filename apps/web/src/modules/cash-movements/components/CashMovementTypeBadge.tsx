@@ -2,9 +2,9 @@ import { Badge, type BadgeProps } from "@/shared/components/ui/badge";
 import type { CashMovementType } from "@/modules/cash-movements/types/cash-movement.types";
 
 const LABEL: Record<CashMovementType, string> = {
-  capital: "Modal",
-  expense: "Biaya",
-  adjustment: "Penyesuaian",
+  capital: "Modal Tambahan",
+  expense: "Biaya Operasional",
+  adjustment: "Penyesuaian Kas",
 };
 
 const TONE: Record<CashMovementType, NonNullable<BadgeProps["tone"]>> = {

@@ -9,7 +9,6 @@ import {
   ArrowDownToLine,
   BarChart3,
   Users,
-  Store,
   LayoutGrid,
   ShieldCheck,
   Inbox,
@@ -59,9 +58,7 @@ export function AppSidebar() {
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-surface">
       <div className="flex items-center gap-2.5 border-b border-border px-4 py-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-          <Store className="h-4 w-4" />
-        </div>
+        <img src="/elkasir-logo.png" alt={appBrand} className="h-9 w-9 shrink-0" />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold leading-tight text-text">{appBrand}</span>
           <span className="truncate text-[11px] text-muted">Admin POS</span>

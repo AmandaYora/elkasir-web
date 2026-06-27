@@ -43,6 +43,29 @@ func (h *Handler) storeID(r *http.Request) string {
 	return authcontract.MustPrincipal(r.Context()).StoreID
 }
 
+// guardOwner enforces that only an owner may grant the `owner` role or modify an existing
+// owner account — closing an admin→owner privilege escalation. The web UI also hides these,
+// so a normal admin never reaches this; it only blocks a direct-API bypass.
+func (h *Handler) guardOwner(r *http.Request, targetID, assignRole string) error {
+	caller := authcontract.MustPrincipal(r.Context())
+	if caller.Role == "owner" {
+		return nil
+	}
+	if assignRole == "owner" {
+		return httpx.Forbidden("Hanya owner yang dapat menetapkan role owner.")
+	}
+	if targetID != "" {
+		existing, err := h.svc.Get(r.Context(), caller.StoreID, targetID)
+		if err != nil {
+			return err
+		}
+		if existing.Role == "owner" {
+			return httpx.Forbidden("Hanya owner yang dapat mengubah akun owner.")
+		}
+	}
+	return nil
+}
+
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.List(r.Context(), domain.ListFilter{StoreID: h.storeID(r)})
 	if err != nil {
@@ -67,6 +90,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err)
 		return
 	}
+	if err := h.guardOwner(r, "", in.Role); err != nil {
+		httpx.Error(w, err)
+		return
+	}
 	dto, err := h.svc.Create(r.Context(), h.storeID(r), in)
 	if err != nil {
 		httpx.Error(w, err)
@@ -78,6 +105,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	var in domain.UpdateInput
 	if err := httpx.DecodeJSON(w, r, &in); err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	if err := h.guardOwner(r, chi.URLParam(r, "id"), in.Role); err != nil {
 		httpx.Error(w, err)
 		return
 	}
@@ -97,6 +128,10 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err)
 		return
 	}
+	if err := h.guardOwner(r, chi.URLParam(r, "id"), ""); err != nil {
+		httpx.Error(w, err)
+		return
+	}
 	if err := h.svc.ResetPassword(r.Context(), h.storeID(r), chi.URLParam(r, "id"), body.Password); err != nil {
 		httpx.Error(w, err)
 		return
@@ -105,6 +140,10 @@ func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	if err := h.guardOwner(r, chi.URLParam(r, "id"), ""); err != nil {
+		httpx.Error(w, err)
+		return
+	}
 	if err := h.svc.Delete(r.Context(), h.storeID(r), chi.URLParam(r, "id")); err != nil {
 		httpx.Error(w, err)
 		return

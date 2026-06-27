@@ -44,7 +44,7 @@ const PAYMENT_COLORS: Record<string, string> = { Tunai: chartPalette[0], QRIS: c
 
 const sourceLabel: Record<string, string> = {
   cashier: "Kasir",
-  self_order: "Pesan mandiri",
+  self_order: "Pesan Mandiri",
 };
 const methodLabel: Record<string, string> = {
   cash: "Tunai",

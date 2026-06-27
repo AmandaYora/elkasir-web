@@ -50,11 +50,6 @@ export interface QuoteResult {
   total: number;
 }
 
-export interface CheckoutResult {
-  transactionId: string;
-  order: SelfOrder;
-}
-
 // ── Public (customer) order types ────────────────────────────
 export interface PublicMenuProduct {
   id: string;

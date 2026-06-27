@@ -22,6 +22,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { formatDateTime } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
+import { useAuthStore } from "@/shared/stores/auth.store";
 import { usersService } from "@/modules/users/services/users.service";
 import {
   adminCreateSchema,
@@ -58,6 +59,8 @@ const emptyForm: FormState = {
 export default function UsersPage() {
   const usersQuery = useAsync(() => usersService.list({ limit: 200 }), []);
   const list = usersQuery.data?.data ?? [];
+  // Hanya owner yang boleh menetapkan/mengubah akun owner → aksinya disembunyikan untuk yang lain.
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
 
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -180,28 +183,30 @@ export default function UsersPage() {
                     {u.lastActiveAt ? formatDateTime(u.lastActiveAt) : "—"}
                   </TableCell>
                   <TableCell>
-                    <Dropdown
-                      trigger={
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      }
-                    >
-                      <DropdownItem
-                        onClick={() => {
-                          setEditing(u);
-                          setFormOpen(true);
-                        }}
+                    {(isOwner || u.role !== "owner") && (
+                      <Dropdown
+                        trigger={
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        }
                       >
-                        <Pencil className="h-3.5 w-3.5" /> Ubah
-                      </DropdownItem>
-                      <DropdownItem onClick={() => setResetTarget(u)}>
-                        <KeyRound className="h-3.5 w-3.5" /> Reset password
-                      </DropdownItem>
-                      <DropdownItem danger onClick={() => setDeleting(u)}>
-                        <Trash2 className="h-3.5 w-3.5" /> Hapus
-                      </DropdownItem>
-                    </Dropdown>
+                        <DropdownItem
+                          onClick={() => {
+                            setEditing(u);
+                            setFormOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Ubah
+                        </DropdownItem>
+                        <DropdownItem onClick={() => setResetTarget(u)}>
+                          <KeyRound className="h-3.5 w-3.5" /> Reset password
+                        </DropdownItem>
+                        <DropdownItem danger onClick={() => setDeleting(u)}>
+                          <Trash2 className="h-3.5 w-3.5" /> Hapus
+                        </DropdownItem>
+                      </Dropdown>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -251,6 +256,7 @@ export default function UsersPage() {
 }
 
 function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () => void }) {
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
   const [form, setForm] = useState<FormState>(
     editing
       ? {
@@ -387,7 +393,7 @@ function UserForm({ editing, onDone }: { editing: AdminUser | null; onDone: () =
           value={form.role}
           onChange={(e) => setForm({ ...form, role: e.target.value as AdminRole })}
         >
-          <option value="owner">Pemilik</option>
+          {isOwner && <option value="owner">Pemilik</option>}
           <option value="admin">Admin</option>
           <option value="manager">Manajer</option>
           <option value="viewer">Peninjau</option>

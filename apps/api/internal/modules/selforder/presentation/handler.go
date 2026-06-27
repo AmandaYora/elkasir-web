@@ -51,11 +51,16 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(h.auth.Authenticate)
 		r.Get("/", h.listIncoming) // baca daftar: semua principal terautentikasi
 
-		// Operasi lantai (ubah status dapur, tebus + terima tunai): staf POS (kasir/supervisor)
-		// atau admin owner/admin sebagai fallback. Admin viewer/manager (read-only) ditolak.
+		// Ubah tahap dapur (placed→preparing→completed): staf POS atau admin owner/admin (fallback).
 		r.Group(func(r chi.Router) {
 			r.Use(authcontract.RequireStaffOrAdmin("owner", "admin"))
 			r.Patch("/{id}/status", h.updateStatus)
+		})
+
+		// Tebus + terima TUNAI = operasi laci → HANYA staf POS (kasir/supervisor), bukan admin web
+		// (dashboard tak punya shift/laci). Web admin hanya memantau pesanan.
+		r.Group(func(r chi.Router) {
+			r.Use(authcontract.RequireActor(authcontract.ActorStaff))
 			r.Get("/redeem/{claimCode}", h.redeem)
 			r.Post("/redeem/{claimCode}/checkout", h.redeemCheckout)
 		})

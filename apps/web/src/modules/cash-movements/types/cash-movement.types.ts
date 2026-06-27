@@ -10,10 +10,3 @@ export interface CashMovement {
   approvedBy?: string;
   createdAt: string;
 }
-
-export interface CashMovementInput {
-  type: CashMovementType;
-  amount: number;
-  notes?: string;
-  approvedBy?: string;
-}

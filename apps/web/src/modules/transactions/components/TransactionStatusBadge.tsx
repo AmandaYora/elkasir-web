@@ -5,7 +5,7 @@ const TONE: Record<
   string,
   { tone: "neutral" | "primary" | "success" | "warning" | "danger"; label: string }
 > = {
-  completed: { tone: "success", label: "Selesai" },
+  completed: { tone: "success", label: "Lunas" },
   pending: { tone: "warning", label: "Menunggu" },
   voided: { tone: "danger", label: "Dibatalkan" },
   refunded: { tone: "danger", label: "Dikembalikan" },

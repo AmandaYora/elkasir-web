@@ -143,12 +143,12 @@ export default function SettingsPage() {
               checked={form.featureSelfOrder}
               onChange={(e) => set("featureSelfOrder", e.target.checked)}
             />
-            <span className="text-sm font-medium">Self-order pelanggan (QR meja)</span>
+            <span className="text-sm font-medium">Pesan mandiri pelanggan (QR meja)</span>
           </label>
 
           <div className="space-y-3 border-l-2 border-border pl-4">
             <p className="text-xs text-muted">
-              Metode pembayaran self-order. Nonaktifkan salah satu untuk menyembunyikannya dari
+              Metode pembayaran pesan mandiri. Nonaktifkan salah satu untuk menyembunyikannya dari
               halaman pesan pelanggan.
             </p>
             <label className="flex items-center gap-3">

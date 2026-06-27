@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Navigate, Outlet } from "react-router-dom";
-import { Store, Wallet, Receipt, QrCode, ArrowUpRight, type LucideIcon } from "lucide-react";
+import { Wallet, Receipt, QrCode, ArrowUpRight, type LucideIcon } from "lucide-react";
 import { useAuthStore } from "@/shared/stores/auth.store";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { appBrand } from "@/shared/constants/brand";
@@ -56,14 +56,7 @@ function BrandMark({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const light = variant === "light";
   return (
     <div className="flex items-center gap-2.5">
-      <span
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-lg shadow-sm",
-          light ? "bg-white/15 text-white backdrop-blur" : "bg-primary text-primary-foreground",
-        )}
-      >
-        <Store className="h-4 w-4" />
-      </span>
+      <img src="/elkasir-logo.png" alt={appBrand} className="h-9 w-9 shrink-0" />
       <div className="flex flex-col">
         <span
           className={cn("text-sm font-semibold leading-tight", light ? "text-white" : "text-text")}

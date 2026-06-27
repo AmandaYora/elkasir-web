@@ -14,10 +14,3 @@ export const placeOrderSchema = z.object({
 });
 
 export type PlaceOrderValues = z.infer<typeof placeOrderSchema>;
-
-// Validation for the staff "redeem claim code" form.
-export const redeemSchema = z.object({
-  claimCode: z.string().min(1, "Kode klaim wajib diisi"),
-});
-
-export type RedeemValues = z.infer<typeof redeemSchema>;
