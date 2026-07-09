@@ -155,9 +155,15 @@ export const api = {
     return res.data?.data as T;
   },
   // Multipart upload. Pass a FormData; axios/browser set the multipart boundary
-  // automatically. Use `onUploadProgress` (via config) for a progress bar.
+  // automatically — but only if we clear the instance's default JSON Content-Type
+  // first. Left as-is, Axios sees an explicit "application/json" already set and
+  // JSON.stringifies the FormData instead of sending it as multipart, so the
+  // server always fails to parse the form regardless of file size. Use
+  // `onUploadProgress` (via config) for a progress bar.
   async upload<T>(url: string, form: FormData, config?: RequestConfig): Promise<T> {
-    const res = await httpClient.post<ApiSuccess<T>>(url, form, withQuery(config));
+    const cfg = withQuery(config);
+    cfg.headers = { ...(cfg.headers ?? {}), "Content-Type": undefined };
+    const res = await httpClient.post<ApiSuccess<T>>(url, form, cfg);
     return res.data?.data as T;
   },
 };
