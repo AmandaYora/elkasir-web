@@ -24,8 +24,17 @@ import (
 
 const (
 	maxInputBytes = 10 << 20 // 10 MB — gambar dari FE sudah dikompres tahap-1
-	maxDim        = 1280     // sisi terpanjang maksimum setelah kompres tahap-2
-	jpegQuality   = 82       // titik manis ukuran/kualitas untuk foto produk
+
+	productMaxDim      = 1280 // sisi terpanjang maksimum utk foto produk (tampil di UI web)
+	productJPEGQuality = 82   // titik manis ukuran/kualitas untuk foto produk
+
+	// Logo toko dicetak di kertas thermal 384px (58mm) / 576px (80mm) — dan didither
+	// hitam-putih di printer, jadi resolusi tinggi tidak menambah kualitas cetak, hanya
+	// memperbesar payload yang harus diproses & dikirim ke printer setiap struk. 576
+	// mencakup lebar terbesar (80mm) tanpa upscale; mobile men-downscale lagi ke 384
+	// bila kertas 58mm. Kualitas dinaikkan sedikit karena ukurannya sudah kecil.
+	logoMaxDim      = 576
+	logoJPEGQuality = 90
 )
 
 // Result adalah balasan upload: key objek + URL publiknya.
@@ -54,7 +63,8 @@ func (s *Service) Upload(ctx context.Context, category string, data []byte) (Res
 		return Result{}, httpx.Validation("File harus berupa gambar.")
 	}
 
-	out, err := compress(data)
+	maxDim, quality := profileFor(category)
+	out, err := compress(data, maxDim, quality)
 	if err != nil {
 		return Result{}, err
 	}
@@ -67,9 +77,19 @@ func (s *Service) Upload(ctx context.Context, category string, data []byte) (Res
 	return Result{Key: key, URL: url}, nil
 }
 
+// profileFor memilih profil kompresi sesuai tujuan pakai gambar: logo toko dicetak di
+// struk (kecil, monokrom) butuh resolusi jauh lebih rendah daripada foto produk (tampil
+// di UI web, boleh besar & berwarna penuh).
+func profileFor(category string) (maxDim, quality int) {
+	if sanitizeCategory(category) == "store-logo" {
+		return logoMaxDim, logoJPEGQuality
+	}
+	return productMaxDim, productJPEGQuality
+}
+
 // compress: auto-orient (EXIF) → downscale ke maxDim → flatten transparansi ke putih
-// → re-encode JPEG quality 82.
-func compress(data []byte) ([]byte, error) {
+// → re-encode JPEG pada quality yang diberikan.
+func compress(data []byte, maxDim, quality int) ([]byte, error) {
 	src, err := imaging.Decode(bytes.NewReader(data), imaging.AutoOrientation(true))
 	if err != nil {
 		return nil, httpx.Validation("File bukan gambar yang valid atau formatnya tidak didukung.")
@@ -83,7 +103,7 @@ func compress(data []byte) ([]byte, error) {
 	flat = imaging.Overlay(flat, src, image.Pt(0, 0), 1.0)
 
 	var buf bytes.Buffer
-	if err := imaging.Encode(&buf, flat, imaging.JPEG, imaging.JPEGQuality(jpegQuality)); err != nil {
+	if err := imaging.Encode(&buf, flat, imaging.JPEG, imaging.JPEGQuality(quality)); err != nil {
 		return nil, httpx.Internal("Gagal memproses gambar.")
 	}
 	return buf.Bytes(), nil
