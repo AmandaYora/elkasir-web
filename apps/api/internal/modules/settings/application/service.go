@@ -1,9 +1,12 @@
 // Package application: use case modul settings — baca & perbarui konfigurasi toko
-// (kontrol diskon, fitur, pajak & layanan). Hanya menyentuh tabel settings (via repo).
+// (kontrol diskon, fitur, pajak & layanan) dan profil identitas toko (nama/telepon/alamat/
+// logo). Menyentuh tabel settings + kolom profil di stores (via repo).
 package application
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 
 	"github.com/elkasir/api/internal/modules/settings/infrastructure"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
@@ -19,28 +22,36 @@ func NewService(repo *infrastructure.Repo) *Service { return &Service{repo: repo
 
 // DTO adalah representasi settings untuk admin (camelCase via JSON tags).
 type DTO struct {
-	MaxDiscountPercent    int32 `json:"maxDiscountPercent"`
-	MaxOperationalExpense int64 `json:"maxOperationalExpense"`
-	CashVarianceTolerance int64 `json:"cashVarianceTolerance"`
-	FeatureSelfOrder      bool  `json:"featureSelfOrder"`
-	FeatureQris           bool  `json:"featureQris"`
-	FeaturePayAtCashier   bool  `json:"featurePayAtCashier"`
-	TaxEnabled            bool  `json:"taxEnabled"`
-	TaxPercent            int32 `json:"taxPercent"`
-	ServicePercent        int32 `json:"servicePercent"`
+	StoreName             string `json:"storeName"`
+	StorePhone            string `json:"storePhone"`
+	StoreAddress          string `json:"storeAddress"`
+	StoreLogoUrl          string `json:"storeLogoUrl"`
+	MaxDiscountPercent    int32  `json:"maxDiscountPercent"`
+	MaxOperationalExpense int64  `json:"maxOperationalExpense"`
+	CashVarianceTolerance int64  `json:"cashVarianceTolerance"`
+	FeatureSelfOrder      bool   `json:"featureSelfOrder"`
+	FeatureQris           bool   `json:"featureQris"`
+	FeaturePayAtCashier   bool   `json:"featurePayAtCashier"`
+	TaxEnabled            bool   `json:"taxEnabled"`
+	TaxPercent            int32  `json:"taxPercent"`
+	ServicePercent        int32  `json:"servicePercent"`
 }
 
 // Input adalah payload PATCH /settings (semua field wajib — admin mengirim objek penuh).
 type Input struct {
-	MaxDiscountPercent    int32 `json:"maxDiscountPercent"`
-	MaxOperationalExpense int64 `json:"maxOperationalExpense"`
-	CashVarianceTolerance int64 `json:"cashVarianceTolerance"`
-	FeatureSelfOrder      bool  `json:"featureSelfOrder"`
-	FeatureQris           bool  `json:"featureQris"`
-	FeaturePayAtCashier   bool  `json:"featurePayAtCashier"`
-	TaxEnabled            bool  `json:"taxEnabled"`
-	TaxPercent            int32 `json:"taxPercent"`
-	ServicePercent        int32 `json:"servicePercent"`
+	StoreName             string `json:"storeName"`
+	StorePhone            string `json:"storePhone"`
+	StoreAddress          string `json:"storeAddress"`
+	StoreLogoUrl          string `json:"storeLogoUrl"`
+	MaxDiscountPercent    int32  `json:"maxDiscountPercent"`
+	MaxOperationalExpense int64  `json:"maxOperationalExpense"`
+	CashVarianceTolerance int64  `json:"cashVarianceTolerance"`
+	FeatureSelfOrder      bool   `json:"featureSelfOrder"`
+	FeatureQris           bool   `json:"featureQris"`
+	FeaturePayAtCashier   bool   `json:"featurePayAtCashier"`
+	TaxEnabled            bool   `json:"taxEnabled"`
+	TaxPercent            int32  `json:"taxPercent"`
+	ServicePercent        int32  `json:"servicePercent"`
 }
 
 func (s *Service) Get(ctx context.Context, storeID string) (DTO, error) {
@@ -48,10 +59,17 @@ func (s *Service) Get(ctx context.Context, storeID string) (DTO, error) {
 	if err != nil {
 		return DTO{}, err
 	}
-	return toDTO(st), nil
+	profile, err := s.repo.GetStoreProfile(ctx, storeID)
+	if err != nil {
+		return DTO{}, err
+	}
+	return toDTO(st, profile), nil
 }
 
 func (s *Service) Update(ctx context.Context, storeID string, in Input) (DTO, error) {
+	if strings.TrimSpace(in.StoreName) == "" {
+		return DTO{}, httpx.Validation("Nama toko wajib diisi.")
+	}
 	if in.MaxDiscountPercent < 0 || in.MaxDiscountPercent > 100 {
 		return DTO{}, httpx.Validation("Diskon maksimum harus 0–100%.")
 	}
@@ -94,11 +112,24 @@ func (s *Service) Update(ctx context.Context, storeID string, in Input) (DTO, er
 	}); err != nil {
 		return DTO{}, err
 	}
+	if err := s.repo.UpdateStoreProfile(ctx, sqlcgen.UpdateStoreProfileParams{
+		ID:      storeID,
+		Name:    strings.TrimSpace(in.StoreName),
+		Address: toNullString(in.StoreAddress),
+		Phone:   toNullString(in.StorePhone),
+		LogoUrl: toNullString(in.StoreLogoUrl),
+	}); err != nil {
+		return DTO{}, err
+	}
 	return s.Get(ctx, storeID)
 }
 
-func toDTO(st sqlcgen.Setting) DTO {
+func toDTO(st sqlcgen.Setting, profile sqlcgen.GetStoreProfileRow) DTO {
 	return DTO{
+		StoreName:             profile.Name,
+		StorePhone:            profile.Phone.String,
+		StoreAddress:          profile.Address.String,
+		StoreLogoUrl:          profile.LogoUrl.String,
 		MaxDiscountPercent:    st.MaxDiscountPercent,
 		MaxOperationalExpense: st.MaxOperationalExpense,
 		CashVarianceTolerance: st.CashVarianceTolerance,
@@ -109,4 +140,9 @@ func toDTO(st sqlcgen.Setting) DTO {
 		TaxPercent:            st.TaxPercent,
 		ServicePercent:        st.ServicePercent,
 	}
+}
+
+func toNullString(s string) sql.NullString {
+	s = strings.TrimSpace(s)
+	return sql.NullString{String: s, Valid: s != ""}
 }

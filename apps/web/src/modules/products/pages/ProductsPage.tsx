@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye, Upload, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -21,11 +21,11 @@ import { Modal } from "@/shared/components/ui/modal";
 import { Drawer } from "@/shared/components/ui/drawer";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Pagination } from "@/shared/components/ui/pagination";
+import { ImageUploadField } from "@/shared/components/ui/image-upload-field";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { formatIDR } from "@/shared/lib/formatter";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { productsService } from "@/modules/products/services/products.service";
-import { mediaService } from "@/shared/services/media.service";
 import { DEFAULT_PRODUCT_IMAGE_URL } from "@/shared/lib/image";
 import { productSchema } from "@/modules/products/schemas/product.schema";
 import { zodFieldErrors } from "@/shared/lib/form";
@@ -337,15 +337,28 @@ export default function ProductsPage() {
   );
 }
 
+// input type="number" mensanitisasi .value jadi "" untuk angka tak-lengkap seperti "-" saja
+// (belum ada digit) — sama seperti MoneyInput, field ini pakai type="text" biasa supaya "-"
+// di awal ketikan tidak hilang sebelum digit berikutnya diketik.
+function sanitizeSignedInt(raw: string): string {
+  const negative = raw.trim().startsWith("-");
+  const digits = raw.replace(/[^0-9]/g, "");
+  return (negative ? "-" : "") + digits;
+}
+
 function StockAdjuster({ product, onDone }: { product: Product; onDone: (p: Product) => void }) {
-  const [delta, setDelta] = useState(0);
+  // String, bukan number: field ini boleh negatif ("-5"), jadi nilai mentah disimpan sebagai
+  // teks selama pengetikan (termasuk state antara seperti "-" saja) dan baru dikonversi ke
+  // angka saat diterapkan.
+  const [delta, setDelta] = useState("");
   const [busy, setBusy] = useState(false);
+  const deltaNum = Number.parseInt(delta, 10) || 0;
   const apply = async () => {
     setBusy(true);
     try {
-      const updated = await productsService.adjustStock(product.id, delta);
+      const updated = await productsService.adjustStock(product.id, deltaNum);
       toast.success("Stok diperbarui");
-      setDelta(0);
+      setDelta("");
       onDone(updated);
     } catch (e) {
       toast.error("Gagal memperbarui stok. Coba lagi.");
@@ -358,12 +371,12 @@ function StockAdjuster({ product, onDone }: { product: Product; onDone: (p: Prod
       <div className="text-[11px] uppercase tracking-wider text-muted">Sesuaikan stok</div>
       <div className="mt-2 flex items-center gap-2">
         <Input
-          type="number"
+          inputMode="numeric"
           value={delta}
-          onChange={(e) => setDelta(Math.trunc(+e.target.value))}
+          onChange={(e) => setDelta(sanitizeSignedInt(e.target.value))}
           placeholder="mis. 10 atau -5"
         />
-        <Button size="sm" loading={busy} disabled={delta === 0} onClick={apply}>
+        <Button size="sm" loading={busy} disabled={deltaNum === 0} onClick={apply}>
           Terapkan
         </Button>
       </div>
@@ -480,8 +493,8 @@ function ProductForm({
           <Label>Stok</Label>
           <Input
             type="number"
-            value={form.stock}
-            onChange={(e) => upd({ stock: Math.trunc(+e.target.value) })}
+            value={form.stock === 0 ? "" : form.stock}
+            onChange={(e) => upd({ stock: Math.trunc(+e.target.value) || 0 })}
           />
           <FieldError msg={errors.stock} />
         </div>
@@ -497,7 +510,10 @@ function ProductForm({
         </Select>
       </div>
       <ImageUploadField
+        label="Gambar produk"
         value={form.imageUrl ?? ""}
+        category="product"
+        fallback={DEFAULT_PRODUCT_IMAGE_URL}
         uploadingChange={setImageBusy}
         onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
       />
@@ -506,87 +522,6 @@ function ProductForm({
           {editing ? "Simpan Perubahan" : "Tambah Produk"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function ImageUploadField({
-  value,
-  onChange,
-  uploadingChange,
-}: {
-  value: string;
-  onChange: (url: string) => void;
-  uploadingChange: (busy: boolean) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // izinkan memilih file yang sama lagi
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("File harus berupa gambar.");
-      return;
-    }
-    setUploading(true);
-    uploadingChange(true);
-    setProgress(0);
-    try {
-      const res = await mediaService.uploadImage(file, "product", setProgress);
-      onChange(res.url);
-      toast.success("Gambar berhasil diunggah");
-    } catch (err) {
-      toast.error("Gagal mengunggah gambar. Coba lagi.");
-    } finally {
-      setUploading(false);
-      uploadingChange(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-2">
-      <Label>Gambar produk</Label>
-      <div className="flex items-center gap-3">
-        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-muted">
-          <img
-            src={value || DEFAULT_PRODUCT_IMAGE_URL}
-            alt=""
-            onError={(e) => {
-              if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL)
-                e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
-            }}
-            className="h-full w-full object-cover"
-          />
-          {uploading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-medium text-white">
-              {progress}%
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col items-start gap-1.5">
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            loading={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5" /> {value ? "Ganti gambar" : "Unggah gambar"}
-          </Button>
-          {value && !uploading && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => onChange("")}>
-              <X className="h-3.5 w-3.5" /> Hapus gambar
-            </Button>
-          )}
-        </div>
-      </div>
-      <p className="text-xs text-muted">
-        Format JPG, PNG, atau WebP. Gambar otomatis diperkecil agar tetap ringan.
-      </p>
     </div>
   );
 }

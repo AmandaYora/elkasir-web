@@ -18,7 +18,7 @@ public contract a module provides, and the contracts it consumes.
 | `withdrawal` | Cash withdrawal requests (bank/account/holder) | `withdrawals` | — | auth (mw) |
 | `report` | Dashboard + analytics: sales by day, top products, sales by category, payment distribution, staff performance | (reads aggregates over its own report queries) | — | auth (mw) |
 | `payment` | QRIS gateway (Tripay/Midtrans, selectable): create/quote-fee/verify payment | (payment refs) | `paymentclient` — create charge, **quote fee**, status | auth (mw) |
-| `settings` | Store config: control thresholds, feature flags, **pajak (PPN) & biaya layanan** (Pengaturan menu) | `settings` | `settingsclient` — read store settings | auth (mw) |
+| `settings` | Store config: control thresholds, feature flags, **pajak (PPN) & biaya layanan**, **profil toko (nama/telepon/alamat/logo)** (Pengaturan menu) | `settings`, + profile columns on `stores` (shared-kernel exception) | `settingsclient` — read store settings | auth (mw) |
 | `selforder` | Customer self-order: public menu, place order, **quote breakdown**, status, claim-code redeem + checkout (orchestrator) | `self_orders`, `self_order_items` | — | `productclient`, `salesclient`, `shiftclient`, `tableclient`, `paymentclient`, `settingsclient` (UoW); auth (mw, admin side) |
 
 > Table ownership is authoritative in [DATABASE_GUIDE.md](DATABASE_GUIDE.md) (derived from migrations). The

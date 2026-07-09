@@ -3,6 +3,10 @@ import { z } from "zod";
 // Validates the settings form before PATCH. Percent fields clamped 0–100.
 export const settingsSchema = z
   .object({
+    storeName: z.string().trim().min(1, "Nama toko wajib diisi.").max(150),
+    storePhone: z.string().trim().max(40),
+    storeAddress: z.string().trim().max(255),
+    storeLogoUrl: z.string().trim().max(500),
     maxDiscountPercent: z.number().int().min(0).max(100),
     maxOperationalExpense: z.number().int().min(0),
     cashVarianceTolerance: z.number().int().min(0),

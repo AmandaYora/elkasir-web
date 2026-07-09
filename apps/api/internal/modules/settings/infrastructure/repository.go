@@ -1,5 +1,5 @@
-// Package infrastructure: akses tabel settings (milik modul settings) + implementasi
-// kontrak settingsclient untuk pembaca lintas-modul.
+// Package infrastructure: akses tabel settings + kolom profil toko di stores (milik modul
+// settings) + implementasi kontrak settingsclient untuk pembaca lintas-modul.
 package infrastructure
 
 import (
@@ -23,7 +23,9 @@ var defaultSettings = sqlcgen.Setting{
 	ServicePercent:        2,
 }
 
-// Repo menyentuh HANYA tabel settings.
+// Repo menyentuh tabel settings, PLUS kolom profil (name/address/phone/logo_url) di tabel
+// stores — pengecualian shared-kernel, lihat knowledge/MODULE_MAP.md. Kolom lain di stores
+// (type/timezone/currency) tetap di luar tanggung jawab modul ini.
 type Repo struct {
 	pool *sql.DB
 	q    *sqlcgen.Queries
@@ -44,4 +46,13 @@ func (r *Repo) Get(ctx context.Context, storeID string) (sqlcgen.Setting, error)
 
 func (r *Repo) Upsert(ctx context.Context, p sqlcgen.UpsertSettingsParams) error {
 	return r.q.UpsertSettings(ctx, p)
+}
+
+// GetStoreProfile mengembalikan identitas toko (name/address/phone/logo_url).
+func (r *Repo) GetStoreProfile(ctx context.Context, storeID string) (sqlcgen.GetStoreProfileRow, error) {
+	return r.q.GetStoreProfile(ctx, storeID)
+}
+
+func (r *Repo) UpdateStoreProfile(ctx context.Context, p sqlcgen.UpdateStoreProfileParams) error {
+	return r.q.UpdateStoreProfile(ctx, p)
 }

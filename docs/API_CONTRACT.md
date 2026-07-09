@@ -250,6 +250,20 @@ All figures count only `status = completed` transactions.
 
 ---
 
+## Settings — `/api/v1/settings` + `/api/v1/pos`
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/v1/settings` | admin | Store profile + control policy + feature flags. |
+| PATCH | `/api/v1/settings` | admin (owner/admin) | Update the same (full object — client sends the whole form). |
+| GET | `/api/v1/pos/pricing` | Bearer | Read-only subset (service % + PPN) for POS math. |
+| GET | `/api/v1/pos/config` | Bearer | Full POS bootstrap payload: store identity + pricing + feature flags + approval thresholds. Pulled by the mobile app on login/refresh. |
+
+- **Settings `data`:** `{ "storeName", "storePhone", "storeAddress", "storeLogoUrl", "maxDiscountPercent", "maxOperationalExpense", "cashVarianceTolerance", "featureSelfOrder", "featureQris", "featurePayAtCashier", "taxEnabled", "taxPercent", "servicePercent" }`. `storeLogoUrl` is set by first uploading via `POST /uploads` (`category=store-logo`) and PATCHing the returned `url` here. `storeName` required (non-empty); `PATCH` validates percent fields 0–100 and rejects self-order active with no payment method enabled.
+- **`/pos/config` `data`:** `{ "store": { "name", "phone", "address", "logoUrl" }, "pricing": { "servicePercent", "taxPercent", "taxEnabled" }, "features": { "qris", "selfOrder", "payAtCashier" }, "thresholds": { "maxDiscountPercent", "maxOperationalExpense", "cashVarianceTolerance" } }`.
+
+---
+
 ## Self-orders (admin/staff) — `/api/v1/self-orders`
 
 Guard: `Authenticate` (any authenticated actor).

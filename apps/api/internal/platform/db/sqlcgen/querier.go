@@ -64,6 +64,10 @@ type Querier interface {
 	GetStaffByID(ctx context.Context, id string) (Staff, error)
 	GetStaffByUsername(ctx context.Context, username string) (Staff, error)
 	GetStaffScoped(ctx context.Context, arg GetStaffScopedParams) (Staff, error)
+	// stores adalah shared kernel; modul settings juga mengelola kolom profil (name/address/
+	// phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
+	// Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
+	GetStoreProfile(ctx context.Context, id string) (GetStoreProfileRow, error)
 	GetTable(ctx context.Context, arg GetTableParams) (DiningTable, error)
 	GetTableByCode(ctx context.Context, arg GetTableByCodeParams) (DiningTable, error)
 	GetTransaction(ctx context.Context, arg GetTransactionParams) (Transaction, error)
@@ -103,6 +107,7 @@ type Querier interface {
 	UpdateStaff(ctx context.Context, arg UpdateStaffParams) error
 	UpdateStaffPassword(ctx context.Context, arg UpdateStaffPasswordParams) error
 	UpdateStaffPin(ctx context.Context, arg UpdateStaffPinParams) error
+	UpdateStoreProfile(ctx context.Context, arg UpdateStoreProfileParams) error
 	UpdateTable(ctx context.Context, arg UpdateTableParams) error
 	UpsertSettings(ctx context.Context, arg UpsertSettingsParams) error
 	// Batalkan transaksi (void). Hanya transaksi 'completed' yang bisa dibatalkan; 0 rows =

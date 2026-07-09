@@ -1425,6 +1425,14 @@ export interface components {
             taxEnabled: boolean;
         };
         PosConfig: {
+            /** @description Identitas toko untuk header/footer struk (diatur di menu Pengaturan). */
+            store: {
+                name: string;
+                phone: string;
+                address: string;
+                /** @description URL logo toko (object storage), kosong bila belum diunggah. */
+                logoUrl: string;
+            };
             pricing: {
                 /** Format: int32 */
                 servicePercent: number;
@@ -1452,6 +1460,12 @@ export interface components {
             approvedByName: string;
         };
         Settings: {
+            /** @description Nama toko, tampil di header struk. */
+            storeName: string;
+            storePhone: string;
+            storeAddress: string;
+            /** @description URL logo toko. Unggah lewat POST /uploads (category=store-logo), lalu simpan URL-nya di sini. */
+            storeLogoUrl: string;
             /** Format: int32 */
             maxDiscountPercent: number;
             /** Format: int64 */

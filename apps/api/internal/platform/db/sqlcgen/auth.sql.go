@@ -110,7 +110,7 @@ func (q *Queries) GetAdminUserByID(ctx context.Context, id string) (AdminUser, e
 }
 
 const getFirstStore = `-- name: GetFirstStore :one
-SELECT id, name, type, address, phone, timezone, currency, created_at, updated_at FROM stores ORDER BY created_at ASC LIMIT 1
+SELECT id, name, type, address, phone, timezone, currency, created_at, updated_at, logo_url FROM stores ORDER BY created_at ASC LIMIT 1
 `
 
 func (q *Queries) GetFirstStore(ctx context.Context) (Store, error) {
@@ -126,6 +126,7 @@ func (q *Queries) GetFirstStore(ctx context.Context) (Store, error) {
 		&i.Currency,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LogoUrl,
 	)
 	return i, err
 }

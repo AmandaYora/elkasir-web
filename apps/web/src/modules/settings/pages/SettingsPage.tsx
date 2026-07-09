@@ -9,11 +9,13 @@ import {
   CardDescription,
 } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { MoneyInput } from "@/shared/components/ui/money-input";
 import { FieldError } from "@/shared/components/ui/field-error";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Label } from "@/shared/components/ui/label";
+import { ImageUploadField } from "@/shared/components/ui/image-upload-field";
 import { settingsService } from "@/modules/settings/services/settings.service";
 import { settingsSchema } from "@/modules/settings/schemas/settings.schema";
 import { zodFieldErrors } from "@/shared/lib/form";
@@ -24,6 +26,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -54,6 +57,10 @@ export default function SettingsPage() {
   const num = (key: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement>) =>
     set(key, (Number.parseInt(e.target.value, 10) || 0) as Settings[typeof key]);
 
+  // Tampilkan "" alih-alih literal "0" agar field bisa dikosongkan saat mengetik
+  // (controlled input akan langsung menampilkan ulang "0" kalau ditampilkan sebagai angka).
+  const displayNum = (n: number) => (n === 0 ? "" : n);
+
   const save = async () => {
     const parsed = settingsSchema.safeParse(form);
     if (!parsed.success) {
@@ -79,9 +86,58 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-lg font-semibold">Pengaturan</h1>
         <p className="text-sm text-muted">
-          Atur pajak, biaya layanan, fitur, dan ambang kontrol toko.
+          Atur profil toko, pajak, biaya layanan, fitur, dan ambang kontrol toko.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profil Toko</CardTitle>
+          <CardDescription>
+            Tampil di header & footer struk yang dicetak dari aplikasi kasir.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ImageUploadField
+            label="Logo toko"
+            value={form.storeLogoUrl}
+            category="store-logo"
+            uploadingChange={setLogoBusy}
+            onChange={(url) => set("storeLogoUrl", url)}
+            helpText="Format JPG, PNG, atau WebP. Tampil di atas nama toko pada struk."
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor="storeName">Nama toko</Label>
+            <Input
+              id="storeName"
+              value={form.storeName}
+              onChange={(e) => set("storeName", e.target.value)}
+              aria-invalid={!!errors.storeName}
+            />
+            <FieldError msg={errors.storeName} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="storePhone">No. telepon toko</Label>
+            <Input
+              id="storePhone"
+              value={form.storePhone}
+              onChange={(e) => set("storePhone", e.target.value)}
+              aria-invalid={!!errors.storePhone}
+            />
+            <FieldError msg={errors.storePhone} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="storeAddress">Alamat</Label>
+            <Textarea
+              id="storeAddress"
+              value={form.storeAddress}
+              onChange={(e) => set("storeAddress", e.target.value)}
+              aria-invalid={!!errors.storeAddress}
+            />
+            <FieldError msg={errors.storeAddress} />
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -106,7 +162,7 @@ export default function SettingsPage() {
                 type="number"
                 min={0}
                 max={100}
-                value={form.taxPercent}
+                value={displayNum(form.taxPercent)}
                 disabled={!form.taxEnabled}
                 onChange={num("taxPercent")}
                 aria-invalid={!!errors.taxPercent}
@@ -120,7 +176,7 @@ export default function SettingsPage() {
                 type="number"
                 min={0}
                 max={100}
-                value={form.servicePercent}
+                value={displayNum(form.servicePercent)}
                 onChange={num("servicePercent")}
                 aria-invalid={!!errors.servicePercent}
               />
@@ -189,7 +245,7 @@ export default function SettingsPage() {
               type="number"
               min={0}
               max={100}
-              value={form.maxDiscountPercent}
+              value={displayNum(form.maxDiscountPercent)}
               onChange={num("maxDiscountPercent")}
               aria-invalid={!!errors.maxDiscountPercent}
             />
@@ -217,7 +273,7 @@ export default function SettingsPage() {
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={save} disabled={saving} className="gap-2">
+        <Button onClick={save} disabled={saving || logoBusy} className="gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Simpan
         </Button>

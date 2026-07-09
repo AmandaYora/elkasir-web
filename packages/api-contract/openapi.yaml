@@ -1923,8 +1923,17 @@ components:
 
     PosConfig:
       type: object
-      required: [pricing, features, thresholds]
+      required: [store, pricing, features, thresholds]
       properties:
+        store:
+          type: object
+          required: [name, phone, address, logoUrl]
+          description: Identitas toko untuk header/footer struk (diatur di menu Pengaturan).
+          properties:
+            name: { type: string }
+            phone: { type: string }
+            address: { type: string }
+            logoUrl: { type: string, description: "URL logo toko (object storage), kosong bila belum diunggah." }
         pricing:
           type: object
           required: [servicePercent, taxPercent, taxEnabled]
@@ -1957,9 +1966,16 @@ components:
     Settings:
       type: object
       required:
-        [maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance,
+        [storeName, storePhone, storeAddress, storeLogoUrl,
+         maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance,
          featureSelfOrder, featureQris, featurePayAtCashier, taxEnabled, taxPercent, servicePercent]
       properties:
+        storeName: { type: string, description: "Nama toko, tampil di header struk." }
+        storePhone: { type: string }
+        storeAddress: { type: string }
+        storeLogoUrl:
+          type: string
+          description: "URL logo toko. Unggah lewat POST /uploads (category=store-logo), lalu simpan URL-nya di sini."
         maxDiscountPercent: { type: integer, format: int32 }
         maxOperationalExpense: { type: integer, format: int64 }
         cashVarianceTolerance: { type: integer, format: int64 }

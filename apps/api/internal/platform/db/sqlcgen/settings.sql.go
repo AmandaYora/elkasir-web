@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const getSettingsByStore = `-- name: GetSettingsByStore :one
@@ -35,6 +36,60 @@ func (q *Queries) GetSettingsByStore(ctx context.Context, storeID string) (Setti
 		&i.FeaturePayAtCashier,
 	)
 	return i, err
+}
+
+const getStoreProfile = `-- name: GetStoreProfile :one
+
+SELECT id, name, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1
+`
+
+type GetStoreProfileRow struct {
+	ID      string         `json:"id"`
+	Name    string         `json:"name"`
+	Address sql.NullString `json:"address"`
+	Phone   sql.NullString `json:"phone"`
+	LogoUrl sql.NullString `json:"logoUrl"`
+}
+
+// stores adalah shared kernel; modul settings juga mengelola kolom profil (name/address/
+// phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
+// Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
+func (q *Queries) GetStoreProfile(ctx context.Context, id string) (GetStoreProfileRow, error) {
+	row := q.db.QueryRowContext(ctx, getStoreProfile, id)
+	var i GetStoreProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Address,
+		&i.Phone,
+		&i.LogoUrl,
+	)
+	return i, err
+}
+
+const updateStoreProfile = `-- name: UpdateStoreProfile :exec
+UPDATE stores
+SET name = ?, address = ?, phone = ?, logo_url = ?
+WHERE id = ?
+`
+
+type UpdateStoreProfileParams struct {
+	Name    string         `json:"name"`
+	Address sql.NullString `json:"address"`
+	Phone   sql.NullString `json:"phone"`
+	LogoUrl sql.NullString `json:"logoUrl"`
+	ID      string         `json:"id"`
+}
+
+func (q *Queries) UpdateStoreProfile(ctx context.Context, arg UpdateStoreProfileParams) error {
+	_, err := q.db.ExecContext(ctx, updateStoreProfile,
+		arg.Name,
+		arg.Address,
+		arg.Phone,
+		arg.LogoUrl,
+		arg.ID,
+	)
+	return err
 }
 
 const upsertSettings = `-- name: UpsertSettings :exec

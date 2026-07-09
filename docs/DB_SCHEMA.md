@@ -29,11 +29,15 @@ PK: `id`.
 | `type` | VARCHAR(60) | default `'F&B'`. |
 | `address` | VARCHAR(255) | nullable. |
 | `phone` | VARCHAR(40) | nullable. |
+| `logo_url` | VARCHAR(500) | nullable — diunggah lewat `POST /uploads?category=store-logo` (migration 000014). |
 | `timezone` | VARCHAR(64) | default `'Asia/Jakarta'`. |
 | `currency` | CHAR(3) | default `'IDR'`. |
 | `created_at` / `updated_at` | DATETIME | timestamps. |
 
 References: none (root). Every other tenant table references this via a physical `store_id` FK.
+Profil (`name`/`address`/`phone`/`logo_url`) dibaca-tulis oleh modul `settings` (pengecualian
+shared-kernel — lihat `knowledge/DATABASE_GUIDE.md`), disatukan dengan tabel `settings` dalam satu
+payload admin `GET/PATCH /settings` dan `GET /pos/config`.
 
 ---
 

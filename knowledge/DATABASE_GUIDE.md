@@ -63,7 +63,7 @@ Each table is owned by exactly one module. Cross-module references (primitive ID
 
 | Table                | Owning module   | Notes / cross-module primitive IDs |
 |----------------------|-----------------|------------------------------------|
-| `stores`             | shared kernel   | Tenant root. Referenced by every module via `store_id` FK. |
+| `stores`             | shared kernel   | Tenant root. Referenced by every module via `store_id` FK. Profile columns (`name`/`address`/`phone`/`logo_url`) are read/written by the `settings` module (shared-kernel exception — see `MODULE_MAP.md`). |
 | `settings`           | shared kernel   | One row per store; control policy + feature flags. |
 | `admin_users`        | `adminuser` / `auth` | Web back-office users. |
 | `staff`              | `staff` / `auth` | POS cashiers/supervisors. |

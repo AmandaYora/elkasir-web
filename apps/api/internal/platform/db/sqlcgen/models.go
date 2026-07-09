@@ -1055,6 +1055,7 @@ type Store struct {
 	Currency  string         `json:"currency"`
 	CreatedAt time.Time      `json:"createdAt"`
 	UpdatedAt time.Time      `json:"updatedAt"`
+	LogoUrl   sql.NullString `json:"logoUrl"`
 }
 
 type Transaction struct {

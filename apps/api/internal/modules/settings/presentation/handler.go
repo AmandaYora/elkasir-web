@@ -1,5 +1,6 @@
-// Package presentation: HTTP handler modul settings — GET/PATCH /settings (admin) +
-// GET /pos/pricing (read-only, admin ATAU staf) untuk POS menghitung layanan & PPN.
+// Package presentation: HTTP handler modul settings — GET/PATCH /settings (admin, termasuk
+// profil toko: nama/telepon/alamat/logo) + GET /pos/pricing (read-only, admin ATAU staf)
+// untuk POS menghitung layanan & PPN.
 package presentation
 
 import (
@@ -52,8 +53,15 @@ type PosPricing struct {
 }
 
 // PosConfig adalah konfigurasi yang ditarik POS (staf/admin) untuk mengatur dirinya:
-// harga (layanan/PPN), fitur yang aktif (untuk hide di klien), dan ambang persetujuan.
+// identitas toko, harga (layanan/PPN), fitur yang aktif (untuk hide di klien), dan ambang
+// persetujuan.
 type PosConfig struct {
+	Store struct {
+		Name    string `json:"name"`
+		Phone   string `json:"phone"`
+		Address string `json:"address"`
+		LogoUrl string `json:"logoUrl"`
+	} `json:"store"`
 	Pricing struct {
 		ServicePercent int32 `json:"servicePercent"`
 		TaxPercent     int32 `json:"taxPercent"`
@@ -91,6 +99,10 @@ func (h *Handler) posConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var cfg PosConfig
+	cfg.Store.Name = dto.StoreName
+	cfg.Store.Phone = dto.StorePhone
+	cfg.Store.Address = dto.StoreAddress
+	cfg.Store.LogoUrl = dto.StoreLogoUrl
 	cfg.Pricing.ServicePercent = dto.ServicePercent
 	cfg.Pricing.TaxPercent = dto.TaxPercent
 	cfg.Pricing.TaxEnabled = dto.TaxEnabled

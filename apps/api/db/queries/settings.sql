@@ -4,6 +4,18 @@
 -- name: GetSettingsByStore :one
 SELECT * FROM settings WHERE store_id = ? LIMIT 1;
 
+-- stores adalah shared kernel; modul settings juga mengelola kolom profil (name/address/
+-- phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
+-- Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
+
+-- name: GetStoreProfile :one
+SELECT id, name, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1;
+
+-- name: UpdateStoreProfile :exec
+UPDATE stores
+SET name = ?, address = ?, phone = ?, logo_url = ?
+WHERE id = ?;
+
 -- name: UpsertSettings :exec
 INSERT INTO settings (
   id, store_id, max_discount_percent, max_operational_expense, cash_variance_tolerance,
