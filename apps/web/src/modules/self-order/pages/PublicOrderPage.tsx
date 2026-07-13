@@ -35,9 +35,9 @@ type Step = "menu" | "review" | "qris" | "cashier";
 
 const errMsg = (_e: unknown) => "Pesanan belum bisa diproses. Coba lagi.";
 
-// Halaman self-order pelanggan (publik, tanpa auth). Kode meja diambil dari rute.
+// Halaman self-order pelanggan (publik, tanpa auth). Slug toko + kode meja diambil dari rute.
 export default function PublicOrderPage() {
-  const { code = "" } = useParams();
+  const { slug = "", code = "" } = useParams();
 
   const [menu, setMenu] = useState<PublicMenu | null>(null);
   const [menuLoading, setMenuLoading] = useState(true);
@@ -58,7 +58,7 @@ export default function PublicOrderPage() {
     setMenuLoading(true);
     setMenuError(null);
     publicOrderService
-      .menu(code)
+      .menu(slug, code)
       .then((data) => {
         if (active) setMenu(data);
       })
@@ -71,7 +71,7 @@ export default function PublicOrderPage() {
     return () => {
       active = false;
     };
-  }, [code]);
+  }, [slug, code]);
 
   const products = menu?.products ?? [];
   const categories = useMemo(() => ["Semua", ...(menu?.categories ?? [])], [menu]);
@@ -116,7 +116,7 @@ export default function PublicOrderPage() {
     const quoteMethod = qrisEnabled ? "qris" : "cash";
     const timer = setTimeout(() => {
       publicOrderService
-        .quote(code, {
+        .quote(slug, code, {
           items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty, note: "" })),
           paymentMethod: quoteMethod,
         })
@@ -127,7 +127,7 @@ export default function PublicOrderPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [step, lines, code, qrisEnabled]);
+  }, [step, lines, slug, code, qrisEnabled]);
 
   const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
   const dec = (id: string) =>
@@ -148,7 +148,7 @@ export default function PublicOrderPage() {
   const place = async (paymentMethod: "qris" | "cash") => {
     setPlacing(true);
     try {
-      const res = await publicOrderService.place(code, {
+      const res = await publicOrderService.place(slug, code, {
         items: lines.map((l) => ({ productId: l.product.id, quantity: l.qty, note: "" })),
         paymentMethod,
         customerNote: note.trim(),
@@ -194,7 +194,7 @@ export default function PublicOrderPage() {
 
   if (menuLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted" />
       </div>
     );
@@ -203,11 +203,11 @@ export default function PublicOrderPage() {
   if (menuError || !menu) {
     const notFound = menuError instanceof ApiError && menuError.status === 404;
     return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="auth-rise mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-danger-soft text-danger">
           <Utensils className="h-6 w-6" />
         </div>
-        <h1 className="text-lg font-semibold">Meja tidak dikenali</h1>
+        <h1 className="font-display text-lg font-bold">Meja tidak dikenali</h1>
         <p className="text-sm text-muted">
           {notFound
             ? `QR untuk kode meja "${code}" tidak ditemukan. Silakan hubungi staf.`
@@ -219,11 +219,11 @@ export default function PublicOrderPage() {
 
   if (menu.table.status !== "active") {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="auth-rise mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-muted text-muted">
           <Utensils className="h-6 w-6" />
         </div>
-        <h1 className="text-lg font-semibold">Meja belum tersedia</h1>
+        <h1 className="font-display text-lg font-bold">Meja belum tersedia</h1>
         <p className="text-sm text-muted">
           Meja {menu.table.name} sedang tidak menerima pesanan via QR. Silakan hubungi staf.
         </p>
@@ -233,11 +233,11 @@ export default function PublicOrderPage() {
 
   if (!selfOrderEnabled) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+      <div className="auth-rise mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-muted text-muted">
           <Utensils className="h-6 w-6" />
         </div>
-        <h1 className="text-lg font-semibold">Pemesanan mandiri ditutup</h1>
+        <h1 className="font-display text-lg font-bold">Pemesanan mandiri ditutup</h1>
         <p className="text-sm text-muted">
           Pemesanan via QR sedang tidak tersedia untuk saat ini. Silakan pesan langsung ke staf.
         </p>
@@ -245,11 +245,13 @@ export default function PublicOrderPage() {
     );
   }
 
+  // Total sudah dijelaskan di tiket/OrderBreakdown di atasnya — kartu ini fokus ke "apa
+  // yang dipesan" saja (item + catatan), tanpa mengulang baris Total sekali lagi.
   const OrderSummary = () => {
     if (!placed) return null;
     const o = placed.order;
     return (
-      <div className="w-full rounded-xl border border-border bg-surface text-left">
+      <div className="w-full rounded-2xl border border-border bg-surface text-left">
         <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
           Ringkasan pesanan
         </div>
@@ -259,13 +261,9 @@ export default function PublicOrderPage() {
               <span>
                 {it.quantity} × {it.productName}
               </span>
-              <span className="font-medium">{formatIDR(it.lineTotal)}</span>
+              <span className="font-medium tabular-nums">{formatIDR(it.lineTotal)}</span>
             </div>
           ))}
-        </div>
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm font-semibold">
-          <span>Total</span>
-          <span>{formatIDR(o.total)}</span>
         </div>
         {o.customerNote && (
           <div className="border-t border-border px-4 py-2.5 text-xs text-muted">
@@ -277,138 +275,168 @@ export default function PublicOrderPage() {
   };
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-surface-muted pb-28">
+    <div className="mx-auto min-h-dvh max-w-md bg-surface-muted pb-[calc(7rem+env(safe-area-inset-bottom))]">
       <div className="sticky top-0 z-10 border-b border-border bg-surface/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <Utensils className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold leading-tight">Elkasir</div>
+            <div className="font-display text-sm font-extrabold leading-tight">Elkasir</div>
             <div className="text-xs text-muted">
               Pesan dari Meja <span className="font-semibold text-text">{menu.table.name}</span>
             </div>
           </div>
         </div>
-        {/* Indikator 3 langkah: orientasi cepat untuk pelanggan awam (Menu → Periksa → Bayar). */}
-        <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] font-medium">
-          {["Menu", "Periksa", "Bayar"].map((label, i) => {
-            const current = step === "menu" ? 0 : step === "review" ? 1 : 2;
-            const active = current >= i;
-            return (
-              <div key={label} className="flex items-center gap-1.5">
+        {/* Rel progres 3 langkah (Menu → Periksa → Bayar): posisi kiri-ke-kanan sendiri
+            sudah menyampaikan urutan, jadi cukup diisi warnanya, tanpa perlu angka besar. */}
+        <div className="mt-3">
+          <div className="flex items-center gap-1.5">
+            {(["menu", "review", "pay"] as const).map((seg, i) => {
+              const current = step === "menu" ? 0 : step === "review" ? 1 : 2;
+              return (
                 <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                    active ? "bg-primary text-primary-foreground" : "bg-surface-muted text-muted"
+                  key={seg}
+                  className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                    current >= i ? "bg-primary" : "bg-surface-muted"
                   }`}
-                >
-                  {i + 1}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-[11px] font-medium">
+            {["Menu", "Periksa", "Bayar"].map((label, i) => {
+              const current = step === "menu" ? 0 : step === "review" ? 1 : 2;
+              return (
+                <span key={label} className={current >= i ? "text-text" : "text-muted"}>
+                  {label}
                 </span>
-                <span className={active ? "text-text" : "text-muted"}>{label}</span>
-                {i < 2 && <span className="h-px w-4 bg-border" />}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {step === "menu" && (
+        // Fragment (bukan div beranimasi) di level ini dengan sengaja: keyframe auth-rise
+        // memakai transform, dan transform pada leluhur mana pun membuat descendant
+        // position:fixed (bar keranjang di bawah) jadi terpaku ke KOTAK leluhur itu, bukan
+        // ke viewport — bar bisa "hilang" tergulir ke bawah daftar menu yang panjang.
+        // Jadi auth-rise ditaruh di div konten yang bisa discroll, bar tetap sibling di luar.
         <>
-          <div className="space-y-3 p-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Cari menu..."
-                className="pl-9"
-              />
+          <div key="menu" className="auth-rise">
+            <div className="space-y-3 p-4">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Cari menu..."
+                  className="h-11 rounded-xl pl-10"
+                />
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCat(c)}
+                    className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                      cat === c
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-surface text-muted hover:border-muted/60"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {categories.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCat(c)}
-                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    cat === c
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          <div className="space-y-2 px-4">
-            {visible.map((p) => {
-              const qty = cart[p.id] ?? 0;
-              return (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3"
-                >
-                  <img
-                    src={p.imageUrl || DEFAULT_PRODUCT_IMAGE_URL}
-                    alt={p.name}
-                    loading="lazy"
-                    onError={(e) => {
-                      // Hindari loop bila gambar default sendiri gagal dimuat.
-                      if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL) {
-                        e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
-                      }
-                    }}
-                    className="h-12 w-12 shrink-0 rounded-lg bg-surface-muted object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">{p.name}</div>
-                    <div className="text-xs text-muted">{p.category}</div>
-                    <div className="mt-0.5 text-sm font-bold">{formatIDR(p.price)}</div>
-                  </div>
-                  {qty === 0 ? (
-                    <Button size="sm" variant="outline" className="gap-1" onClick={() => add(p.id)}>
-                      <Plus className="h-3.5 w-3.5" /> Tambah
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2">
+            <div className="space-y-2 px-4">
+              {visible.map((p) => {
+                const qty = cart[p.id] ?? 0;
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3 shadow-xs"
+                  >
+                    <img
+                      src={p.imageUrl || DEFAULT_PRODUCT_IMAGE_URL}
+                      alt={p.name}
+                      loading="lazy"
+                      onError={(e) => {
+                        // Hindari loop bila gambar default sendiri gagal dimuat.
+                        if (e.currentTarget.src !== DEFAULT_PRODUCT_IMAGE_URL) {
+                          e.currentTarget.src = DEFAULT_PRODUCT_IMAGE_URL;
+                        }
+                      }}
+                      className="h-14 w-14 shrink-0 rounded-xl bg-surface-muted object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold">{p.name}</div>
+                      <div className="text-xs text-muted">{p.category}</div>
+                      <div className="mt-0.5 text-sm font-bold tabular-nums">
+                        {formatIDR(p.price)}
+                      </div>
+                    </div>
+                    {qty === 0 ? (
                       <Button
-                        size="icon"
+                        size="sm"
                         variant="outline"
-                        className="h-8 w-8"
-                        onClick={() => dec(p.id)}
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-5 text-center text-sm font-bold">{qty}</span>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-8 w-8"
+                        className="shrink-0 gap-1 active:scale-95"
                         onClick={() => add(p.id)}
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-3.5 w-3.5" /> Tambah
                       </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {visible.length === 0 && (
-              <div className="py-12 text-center text-sm text-muted">Menu tidak ditemukan.</div>
-            )}
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-surface-muted p-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 rounded-full bg-surface active:scale-90"
+                          onClick={() => dec(p.id)}
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="w-5 text-center text-sm font-bold tabular-nums">
+                          {qty}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 rounded-full bg-surface active:scale-90"
+                          onClick={() => add(p.id)}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {visible.length === 0 && (
+                <div className="py-12 text-center text-sm text-muted">Menu tidak ditemukan.</div>
+              )}
+            </div>
           </div>
 
+          {/* Sibling di luar div auth-rise di atas (bukan child) — lihat catatan di pembuka
+              blok "menu". auth-rise aman dipasang di elemen fixed ini SENDIRI (transform pada
+              diri sendiri tidak memengaruhi posisi fixed-nya sendiri), hanya berbahaya bila
+              dipasang di LELUHURNYA. */}
           {totalItems > 0 && (
-            <div className="fixed inset-x-0 bottom-0 z-10 mx-auto max-w-md p-4">
+            <div
+              className="auth-rise fixed inset-x-0 bottom-0 z-10 mx-auto max-w-md p-4"
+              style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+            >
               <Button
-                className="h-12 w-full justify-between gap-2 shadow-lg"
+                className="h-12 w-full justify-between gap-2 shadow-lg active:scale-[0.99]"
                 onClick={() => setStep("review")}
               >
                 <span className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4" /> {totalItems} item
                 </span>
-                <span>Lanjut · {formatIDR(total)}</span>
+                <span className="font-mono tabular-nums">Lanjut · {formatIDR(total)}</span>
               </Button>
             </div>
           )}
@@ -416,15 +444,15 @@ export default function PublicOrderPage() {
       )}
 
       {step === "review" && (
-        <div className="space-y-4 p-4">
+        <div key="review" className="auth-rise space-y-4 p-4">
           <button
             onClick={() => setStep("menu")}
-            className="flex items-center gap-1 text-sm text-muted"
+            className="flex items-center gap-1 rounded-md text-sm text-muted transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <ArrowLeft className="h-4 w-4" /> Tambah menu lagi
           </button>
 
-          <div className="rounded-xl border border-border bg-surface">
+          <div className="rounded-2xl border border-border bg-surface">
             <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
               Pesanan Anda
             </div>
@@ -433,32 +461,36 @@ export default function PublicOrderPage() {
                 <div key={l.product.id} className="flex items-center gap-2 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{l.product.name}</div>
-                    <div className="text-xs text-muted">{formatIDR(l.product.price)}</div>
+                    <div className="text-xs text-muted tabular-nums">
+                      {formatIDR(l.product.price)}
+                    </div>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-7 w-7"
-                    onClick={() => dec(l.product.id)}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="w-5 text-center text-sm font-bold">{l.qty}</span>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-7 w-7"
-                    onClick={() => add(l.product.id)}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                  <span className="w-20 text-right text-sm font-semibold">
+                  <div className="flex shrink-0 items-center gap-1 rounded-full bg-surface-muted p-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 rounded-full bg-surface active:scale-90"
+                      onClick={() => dec(l.product.id)}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-5 text-center text-sm font-bold tabular-nums">{l.qty}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 rounded-full bg-surface active:scale-90"
+                      onClick={() => add(l.product.id)}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <span className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums">
                     {formatIDR(l.product.price * l.qty)}
                   </span>
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-danger"
+                    className="h-7 w-7 shrink-0 text-danger hover:bg-danger-soft"
                     onClick={() => remove(l.product.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -474,6 +506,7 @@ export default function PublicOrderPage() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="mis. tidak pedas, tanpa es"
+              className="h-11 rounded-xl"
             />
           </div>
 
@@ -487,9 +520,9 @@ export default function PublicOrderPage() {
               taxPercent={menu.taxEnabled ? menu.taxPercent : undefined}
             />
           ) : (
-            <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
+            <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-4 py-3">
               <span className="text-sm text-muted">Subtotal</span>
-              <span className="text-lg font-bold">{formatIDR(total)}</span>
+              <span className="font-mono text-lg font-bold tabular-nums">{formatIDR(total)}</span>
             </div>
           )}
 
@@ -505,9 +538,9 @@ export default function PublicOrderPage() {
               <button
                 onClick={() => place("qris")}
                 disabled={placing}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
+                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 active:scale-[0.99] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <QrCode className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -522,9 +555,9 @@ export default function PublicOrderPage() {
               <button
                 onClick={() => place("cash")}
                 disabled={placing}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-60"
+                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary hover:bg-primary/5 active:scale-[0.99] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <ScanLine className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -540,11 +573,11 @@ export default function PublicOrderPage() {
       )}
 
       {step === "qris" && placed && (
-        <div className="space-y-4 p-4">
+        <div key="qris" className="auth-rise space-y-4 p-4">
           {!qrisPaid && (
             <button
               onClick={() => setStep("review")}
-              className="flex items-center gap-1 text-sm text-muted"
+              className="flex items-center gap-1 rounded-md text-sm text-muted transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               <ArrowLeft className="h-4 w-4" /> Ganti cara pembayaran
             </button>
@@ -585,7 +618,7 @@ export default function PublicOrderPage() {
       )}
 
       {step === "cashier" && placed && (
-        <div className="space-y-4 p-4">
+        <div key="cashier" className="auth-rise space-y-4 p-4">
           <CashierBarcodePanel
             claimCode={placed.claimCode || placed.order.claimCode || ""}
             total={placed.order.total}

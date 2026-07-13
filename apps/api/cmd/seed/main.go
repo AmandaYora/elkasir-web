@@ -39,5 +39,6 @@ func run() error {
 	}
 
 	log.Printf("seed selesai: admin login %q / %q", bootstrap.AdminEmail, bootstrap.AdminPassword)
+	log.Printf("seed selesai: platform superadmin login %q / %q", bootstrap.PlatformEmail, bootstrap.PlatformPassword)
 	return nil
 }

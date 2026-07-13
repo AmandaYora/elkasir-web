@@ -19,7 +19,10 @@ type Table struct {
 
 // Client adalah kontrak yang dipublikasikan modul table.
 type Client interface {
-	FindByCode(ctx context.Context, code string) (Table, error)     // entry self-order; store ditemukan dari code
+	// FindByCode adalah entry point self-order publik (QR discan pelanggan): store BELUM
+	// diketahui sebelum panggilan ini, jadi di-resolve lewat slug toko (bukan cuma code —
+	// code cuma unik per-toko, lihat migration 000016 & knowledge/DATABASE_GUIDE.md §3).
+	FindByCode(ctx context.Context, storeSlug, code string) (Table, error)
 	GetByID(ctx context.Context, storeID, id string) (Table, error) // detail meja
 	ListAll(ctx context.Context, storeID string) ([]Table, error)   // peta meja (mis. daftar pesanan masuk)
 }

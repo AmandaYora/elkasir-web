@@ -12,7 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -168,8 +168,8 @@ type PlaceInput struct {
 }
 
 // ── Menu publik ──────────────────────────────────────────────
-func (s *Service) Menu(ctx context.Context, tableCode string) (MenuDTO, error) {
-	t, err := s.tables.FindByCode(ctx, tableCode)
+func (s *Service) Menu(ctx context.Context, storeSlug, tableCode string) (MenuDTO, error) {
+	t, err := s.tables.FindByCode(ctx, storeSlug, tableCode)
 	if errors.Is(err, tableclient.ErrNotFound) {
 		return MenuDTO{}, httpx.NotFound("Meja tidak dikenali.")
 	}
@@ -209,8 +209,8 @@ func (s *Service) Menu(ctx context.Context, tableCode string) (MenuDTO, error) {
 }
 
 // ── Buat self-order (Kondisi 2 & 3) ──────────────────────────
-func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInput) (PlaceResult, error) {
-	t, err := s.tables.FindByCode(ctx, tableCode)
+func (s *Service) PlaceOrder(ctx context.Context, storeSlug, tableCode string, in PlaceInput) (PlaceResult, error) {
+	t, err := s.tables.FindByCode(ctx, storeSlug, tableCode)
 	if errors.Is(err, tableclient.ErrNotFound) {
 		return PlaceResult{}, httpx.NotFound("Meja tidak dikenali.")
 	}
@@ -255,10 +255,18 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 			return PlaceResult{}, err
 		}
 
-		// Tagih TOTAL (sudah termasuk layanan + gateway + PPN) via paymentclient + catat payments.
-		charge, err := s.payments.CreateCharge(ctx, t.StoreID, soID, bd.Total)
+		// Tagih TOTAL (sudah termasuk layanan + gateway + PPN) via paymentclient.
+		charge, err := s.payments.CreateCharge(ctx, paymentclient.AppSelfOrder, t.StoreID, soID, bd.Total)
 		if err != nil {
 			return PlaceResult{}, httpx.Internal("Gagal membuat QR pembayaran: " + err.Error())
+		}
+		// Catat ledger MILIK selforder sendiri (best-effort — self_orders.payment_status,
+		// ditegakkan lewat webhook, tetap sumber kebenaran status bayar).
+		if rerr := s.repo.RecordPayment(ctx, infrastructure.RecordPaymentData{
+			StoreID: t.StoreID, SelfOrderID: soID, Provider: charge.Provider,
+			ProviderRef: charge.ProviderRef, Amount: bd.Total,
+		}); rerr != nil {
+			slog.Warn("selforder: gagal mencatat ledger payments", "selfOrderId", soID, "err", rerr)
 		}
 
 		dto, err := s.orderDTO(ctx, t.StoreID, soID)
@@ -282,8 +290,8 @@ func (s *Service) PlaceOrder(ctx context.Context, tableCode string, in PlaceInpu
 }
 
 // ── Quote (rincian biaya sebelum order dibuat) ───────────────
-func (s *Service) Quote(ctx context.Context, tableCode string, in PlaceInput) (QuoteDTO, error) {
-	t, err := s.tables.FindByCode(ctx, tableCode)
+func (s *Service) Quote(ctx context.Context, storeSlug, tableCode string, in PlaceInput) (QuoteDTO, error) {
+	t, err := s.tables.FindByCode(ctx, storeSlug, tableCode)
 	if errors.Is(err, tableclient.ErrNotFound) {
 		return QuoteDTO{}, httpx.NotFound("Meja tidak dikenali.")
 	}
@@ -429,45 +437,32 @@ func (s *Service) SimulatePaid(ctx context.Context, soID string) error {
 }
 
 // ── Webhook pembayaran (provider-agnostic) ───────────────────
-// HandleWebhook: verifikasi signature (paymentclient → gateway aktif), idempoten
-// (webhook_events), dan pada status lunas → fulfilment (kurangi stok + transaksi). Selalu 200
-// agar provider tak retry, kecuali signature salah (401) atau kegagalan sementara (500).
-func (s *Service) HandleWebhook(ctx context.Context, header http.Header, body []byte) error {
-	if !s.payments.VerifyWebhook(header, body) {
-		return httpx.Unauthorized("Callback pembayaran tidak terverifikasi.")
+// ApplyWebhookEvent menerapkan event pembayaran yang SUDAH diverifikasi + diparse + dicek
+// idempotensinya oleh dispatcher registry-driven modul payment (payment/presentation, §9.1.5) —
+// service ini terdaftar sebagai consumer utk paymentclient.AppSelfOrder lewat
+// payment.Module.RegisterConsumer di app.go. Service ini tidak lagi menyentuh
+// paymentclient.VerifyWebhook/ParseWebhook/WebhookSeen sendiri, karena SATU webhook gateway
+// dibagi dengan module subscription (Tripay/Midtrans hanya menyediakan satu callback URL per
+// akun merchant — tidak bisa didaftarkan per-modul).
+// Pada status lunas → fulfilment (kurangi stok + catat transaksi). No-op (bukan error) bila
+// ref bukan self-order QRIS yang pending — dispatcher sudah memastikan event ini milik selforder.
+func (s *Service) ApplyWebhookEvent(ctx context.Context, ev paymentclient.WebhookEvent) error {
+	if !ev.Paid || ev.OrderRef == "" {
+		return nil
 	}
-	ev, err := s.payments.ParseWebhook(body)
-	if errors.Is(err, paymentclient.ErrInvalidPayload) {
-		return httpx.BadRequest("Payload webhook tidak valid.")
+	o, err := s.repo.GetByID(ctx, ev.OrderRef)
+	if err != nil || o.PaymentStatus != sqlcgen.SelfOrdersPaymentStatusPending ||
+		o.PaymentMethod != sqlcgen.SelfOrdersPaymentMethodQris {
+		return nil
 	}
-	if err != nil {
-		return err
+	// Idempotency key deterministik → mencegah penjualan ganda bila callback gateway
+	// terkirim dobel/balapan (selain cek webhook_events & status pending di atas).
+	idem := "selforder-" + o.ID
+	if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, idem, idem); err != nil {
+		return err // gagal sementara → biarkan provider retry (dispatcher belum menandai seen)
 	}
-	if ev.EventID == "" {
-		return nil // tak ada identitas event → abaikan
-	}
-	seen, err := s.payments.WebhookSeen(ctx, ev.EventID)
-	if err != nil {
-		return err
-	}
-	if seen {
-		return nil // sudah diproses (idempoten)
-	}
-
-	if ev.Paid && ev.OrderRef != "" {
-		o, err := s.repo.GetByID(ctx, ev.OrderRef)
-		if err == nil && o.PaymentStatus == sqlcgen.SelfOrdersPaymentStatusPending &&
-			o.PaymentMethod == sqlcgen.SelfOrdersPaymentMethodQris {
-			// Idempotency key deterministik → mencegah penjualan ganda bila callback gateway
-			// terkirim dobel/balapan (selain cek webhook_events & status pending).
-			idem := "selforder-" + o.ID
-			if err := s.fulfill(ctx, o, "qris", "", sqlcgen.SelfOrdersStatusPreparing, idem, idem); err != nil {
-				return err // gagal sementara → biarkan provider retry (belum ditandai seen)
-			}
-			s.notifyStatus(ctx, o.ID) // push event lunas ke layar pelanggan (SSE) — best-effort
-		}
-	}
-	return s.payments.MarkWebhookSeen(ctx, ev.EventID)
+	s.notifyStatus(ctx, o.ID) // push event lunas ke layar pelanggan (SSE) — best-effort
+	return nil
 }
 
 // ── Tebus barcode (Kondisi 3, staff) ─────────────────────────
@@ -605,7 +600,11 @@ func (s *Service) fulfill(ctx context.Context, o sqlcgen.SelfOrder, paymentMetho
 		if rerr != nil {
 			return rerr
 		}
-		return s.repo.MarkPaid(ctx, o.ID, txID, newStatus)
+		if err := s.repo.MarkPaid(ctx, o.ID, txID, newStatus); err != nil {
+			return err
+		}
+		s.repo.MarkPaymentPaidBestEffort(ctx, o.ID) // ledger — best-effort, tidak menggagalkan fulfilment
+		return nil
 	})
 	if errors.Is(err, productclient.ErrInsufficientStock) {
 		return httpx.Unprocessable("Stok tidak cukup (" + strings.TrimPrefix(err.Error(), "stok tidak cukup: ") + ").")

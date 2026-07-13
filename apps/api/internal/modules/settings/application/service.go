@@ -23,6 +23,9 @@ func NewService(repo *infrastructure.Repo) *Service { return &Service{repo: repo
 // DTO adalah representasi settings untuk admin (camelCase via JSON tags).
 type DTO struct {
 	StoreName             string `json:"storeName"`
+	// StoreSlug identifies the tenant in the self-order public QR URL
+	// (/order/<slug>/<tableCode>) — read-only here; owned/written by the `platform` module.
+	StoreSlug             string `json:"storeSlug"`
 	StorePhone            string `json:"storePhone"`
 	StoreAddress          string `json:"storeAddress"`
 	StoreLogoUrl          string `json:"storeLogoUrl"`
@@ -127,6 +130,7 @@ func (s *Service) Update(ctx context.Context, storeID string, in Input) (DTO, er
 func toDTO(st sqlcgen.Setting, profile sqlcgen.GetStoreProfileRow) DTO {
 	return DTO{
 		StoreName:             profile.Name,
+		StoreSlug:             profile.Slug,
 		StorePhone:            profile.Phone.String,
 		StoreAddress:          profile.Address.String,
 		StoreLogoUrl:          profile.LogoUrl.String,

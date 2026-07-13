@@ -4,6 +4,7 @@ export const endpoints = {
   auth: {
     adminLogin: "/auth/admin/login",
     staffLogin: "/auth/staff/login",
+    platformLogin: "/auth/platform/login",
     refresh: "/auth/refresh",
     logout: "/auth/logout",
     me: "/auth/me",
@@ -17,6 +18,7 @@ export const endpoints = {
   shifts: "/shifts",
   cashMovements: "/cash-movements",
   withdrawals: "/withdrawals",
+  withdrawalBalance: "/withdrawals/balance",
   reports: {
     dashboard: "/reports/dashboard",
     sales: "/reports/sales",
@@ -29,4 +31,21 @@ export const endpoints = {
   publicOrder: "/public/order",
   uploads: "/uploads",
   settings: "/settings",
+  subscription: {
+    root: "/subscription",
+    plans: "/subscription/plans",
+    checkout: "/subscription/checkout",
+    invoices: "/subscription/invoices",
+  },
+  platform: {
+    tenants: "/platform/tenants",
+    tenantsRevenue: "/platform/tenants/revenue",
+    revenue: "/platform/revenue",
+    plans: "/platform/plans",
+    withdrawals: "/platform/withdrawals",
+    withdrawalHistory: "/platform/withdrawals/history",
+    users: "/platform/users",
+    paymentConfig: "/platform/payment-config",
+    paymentClients: "/platform/payment-clients",
+  },
 } as const;

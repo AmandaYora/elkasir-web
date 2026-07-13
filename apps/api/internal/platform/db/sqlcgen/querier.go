@@ -11,21 +11,34 @@ import (
 
 type Querier interface {
 	AdjustProductStock(ctx context.Context, arg AdjustProductStockParams) (int64, error)
+	// Klaim (pending -> processing), §2.7. Atomic conditional UPDATE — 0 rows affected means the
+	// request was no longer pending (already claimed/rejected by someone else).
+	ClaimWithdrawal(ctx context.Context, arg ClaimWithdrawalParams) (int64, error)
 	CloseShift(ctx context.Context, arg CloseShiftParams) (int64, error)
+	CountAllWithdrawals(ctx context.Context) (int64, error)
 	CountCashMovements(ctx context.Context, storeID string) (int64, error)
+	CountPaymentGatewayConfig(ctx context.Context) (int64, error)
 	CountShifts(ctx context.Context, storeID string) (int64, error)
+	CountSubscriptionInvoices(ctx context.Context, storeID string) (int64, error)
 	CountWithdrawals(ctx context.Context, storeID string) (int64, error)
 	CreateAdminUser(ctx context.Context, arg CreateAdminUserParams) error
 	CreateCashMovement(ctx context.Context, arg CreateCashMovementParams) error
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) error
+	CreateChargeApp(ctx context.Context, arg CreateChargeAppParams) error
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) error
+	// Ledger pembayaran gateway (tabel `payments`) — dimiliki selforder (satu-satunya pemakai);
+	// module `payment` sendiri sudah tidak menyentuh tabel ini (lihat webhook_events.sql).
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) error
+	CreatePaymentClient(ctx context.Context, arg CreatePaymentClientParams) error
+	CreatePlatformUser(ctx context.Context, arg CreatePlatformUserParams) error
 	CreateProduct(ctx context.Context, arg CreateProductParams) error
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateSelfOrder(ctx context.Context, arg CreateSelfOrderParams) error
 	CreateSelfOrderItem(ctx context.Context, arg CreateSelfOrderItemParams) error
 	CreateShift(ctx context.Context, arg CreateShiftParams) error
 	CreateStaff(ctx context.Context, arg CreateStaffParams) error
+	CreateSubscriptionInvoice(ctx context.Context, arg CreateSubscriptionInvoiceParams) error
+	CreateSubscriptionPlan(ctx context.Context, arg CreateSubscriptionPlanParams) error
 	CreateTable(ctx context.Context, arg CreateTableParams) error
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) error
 	CreateTransactionItem(ctx context.Context, arg CreateTransactionItemParams) error
@@ -39,18 +52,43 @@ type Querier interface {
 	DeleteStaff(ctx context.Context, arg DeleteStaffParams) error
 	DeleteTable(ctx context.Context, arg DeleteTableParams) error
 	ExpireOverdueSelfOrders(ctx context.Context, arg ExpireOverdueSelfOrdersParams) (int64, error)
-	FindTableByCode(ctx context.Context, code string) (DiningTable, error)
+	// Entry point self-order publik (QR discan pelanggan): store BELUM diketahui, jadi resolve
+	// lewat slug toko dulu. `code` sendiri cuma unik per-toko (lihat CreateTable), sehingga tanpa
+	// join ke stores.slug ini rentan salah-tenant bila 2 toko kebetulan pakai kode meja yang sama.
+	// Join ke `stores` sah di sini karena `stores` adalah shared-kernel (lihat DATABASE_GUIDE §2),
+	// bukan pelanggaran batas modul.
+	FindTableByStoreSlugAndCode(ctx context.Context, arg FindTableByStoreSlugAndCodeParams) (DiningTable, error)
 	GetAdminUserByEmail(ctx context.Context, email string) (AdminUser, error)
 	GetAdminUserByEmailOrUsername(ctx context.Context, arg GetAdminUserByEmailOrUsernameParams) (AdminUser, error)
 	GetAdminUserByID(ctx context.Context, id string) (AdminUser, error)
 	GetAdminUserScoped(ctx context.Context, arg GetAdminUserScopedParams) (AdminUser, error)
 	GetCashMovement(ctx context.Context, arg GetCashMovementParams) (CashMovement, error)
 	GetCategory(ctx context.Context, arg GetCategoryParams) (ProductCategory, error)
+	GetChargeApp(ctx context.Context, orderRef string) (string, error)
+	// Termasuk provider_ref (§10.2 EB2) — dipakai endpoint status eksternal untuk menerjemahkan
+	// orderRef milik pemanggil ke providerRef yang CheckStatus benar-benar butuhkan.
+	GetChargeAppByOrderRef(ctx context.Context, orderRef string) (GetChargeAppByOrderRefRow, error)
 	GetFirstStore(ctx context.Context) (Store, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetOpenShift(ctx context.Context, storeID string) (Shift, error)
-	GetPaymentByProviderRef(ctx context.Context, providerRef sql.NullString) (Payment, error)
 	GetPaymentBySelfOrder(ctx context.Context, selfOrderID string) (Payment, error)
+	GetPaymentClientByAppID(ctx context.Context, appID string) (PaymentClient, error)
+	GetPaymentClientByID(ctx context.Context, id string) (PaymentClient, error)
+	// Bacaan langsung ke `payment_clients` — pola yang SAMA persis dengan GetPlatformUserByEmail di
+	// atas (auth punya query login-lookup sendiri ke tabel identitas modul lain; CRUD tetap milik
+	// `payment`, bukan `auth`). Dipakai HANYA untuk POST /auth/app/token (PLAN.md §10.1.2/§10.1.3).
+	GetPaymentClientForAppLogin(ctx context.Context, appID string) (GetPaymentClientForAppLoginRow, error)
+	// Dipakai HANYA saat menandatangani relay webhook keluar (§10.1.6/§10.1.10) — bukan untuk
+	// otentikasi masuk (itu pakai secret_hash via GetPaymentClientByAppID/ByID + bcrypt compare).
+	GetPaymentClientSecretEnc(ctx context.Context, id string) (sql.NullString, error)
+	// Bacaan langsung ke `payment_clients.status` — pengecualian shared-kernel yang sama classnya
+	// dengan GetStoreStatus di atas; dipakai utk cek status LIVE per-request utk ActorApp
+	// (PLAN.md §10.1.4), bukan kepemilikan tabel oleh `auth`.
+	GetPaymentClientStatus(ctx context.Context, id string) (PaymentClientsStatus, error)
+	GetPaymentGatewayConfig(ctx context.Context) (PaymentGatewayConfig, error)
+	GetPlatformUser(ctx context.Context, id string) (PlatformUser, error)
+	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
+	GetPlatformUserByID(ctx context.Context, id string) (PlatformUser, error)
 	GetProduct(ctx context.Context, arg GetProductParams) (Product, error)
 	GetProductForSale(ctx context.Context, arg GetProductForSaleParams) (GetProductForSaleRow, error)
 	GetRefreshToken(ctx context.Context, tokenHash string) (RefreshToken, error)
@@ -64,26 +102,60 @@ type Querier interface {
 	GetStaffByID(ctx context.Context, id string) (Staff, error)
 	GetStaffByUsername(ctx context.Context, username string) (Staff, error)
 	GetStaffScoped(ctx context.Context, arg GetStaffScopedParams) (Staff, error)
+	GetStoreByID(ctx context.Context, id string) (GetStoreByIDRow, error)
 	// stores adalah shared kernel; modul settings juga mengelola kolom profil (name/address/
 	// phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
 	// Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
+	// slug dibaca (read-only) di sini untuk ditampilkan admin (URL self-order publik
+	// /order/<slug>/<kodeMeja>) — kepemilikan TULIS-nya tetap di modul `platform` (lihat
+	// migration 000016 & knowledge/MODULE_MAP.md); settings tidak pernah menulis slug.
 	GetStoreProfile(ctx context.Context, id string) (GetStoreProfileRow, error)
+	// Bacaan langsung ke `stores.status` — pengecualian shared-kernel yang sama classnya dengan
+	// kolom profil milik `settings` (lihat MODULE_MAP.md); dipakai utk gerbang suspensi tenant
+	// (PLAN.md §2.13), bukan kepemilikan tabel oleh `auth`.
+	GetStoreStatus(ctx context.Context, id string) (StoresStatus, error)
+	GetStoreSubscription(ctx context.Context, storeID string) (StoreSubscription, error)
+	GetSubscriptionInvoice(ctx context.Context, arg GetSubscriptionInvoiceParams) (SubscriptionInvoice, error)
+	GetSubscriptionInvoiceByID(ctx context.Context, id string) (SubscriptionInvoice, error)
+	GetSubscriptionPlan(ctx context.Context, id string) (SubscriptionPlan, error)
 	GetTable(ctx context.Context, arg GetTableParams) (DiningTable, error)
 	GetTableByCode(ctx context.Context, arg GetTableByCodeParams) (DiningTable, error)
 	GetTransaction(ctx context.Context, arg GetTransactionParams) (Transaction, error)
 	GetWebhookEvent(ctx context.Context, arg GetWebhookEventParams) (WebhookEvent, error)
+	GetWithdrawal(ctx context.Context, id string) (Withdrawal, error)
+	InsertPaymentGatewayConfig(ctx context.Context, arg InsertPaymentGatewayConfigParams) error
 	ListActiveProducts(ctx context.Context, storeID string) ([]ListActiveProductsRow, error)
+	ListActiveSubscriptionPlans(ctx context.Context) ([]SubscriptionPlan, error)
+	// Cross-tenant, superadmin Penarikan page (PLAN.md §2.7) — pending + processing only.
+	ListActiveWithdrawals(ctx context.Context) ([]Withdrawal, error)
 	ListAdminUsers(ctx context.Context, storeID string) ([]AdminUser, error)
+	// Dipakai platform (superadmin) — termasuk plan nonaktif, tidak seperti ListActiveSubscriptionPlans.
+	ListAllSubscriptionPlans(ctx context.Context) ([]SubscriptionPlan, error)
+	// Cross-tenant, superadmin Riwayat Penarikan page — any status, paginated.
+	ListAllWithdrawals(ctx context.Context, arg ListAllWithdrawalsParams) ([]Withdrawal, error)
 	ListCashMovements(ctx context.Context, arg ListCashMovementsParams) ([]CashMovement, error)
 	ListCategories(ctx context.Context, storeID string) ([]ListCategoriesRow, error)
+	ListPaymentClients(ctx context.Context) ([]PaymentClient, error)
+	ListPlatformUsers(ctx context.Context) ([]PlatformUser, error)
 	ListSelfOrderItems(ctx context.Context, selfOrderID string) ([]SelfOrderItem, error)
 	ListShifts(ctx context.Context, arg ListShiftsParams) ([]Shift, error)
 	ListStaff(ctx context.Context, storeID string) ([]Staff, error)
+	// Tabel `stores` dimiliki shared-kernel; kolom siklus-hidup (slug, status) dibaca/ditulis
+	// modul `platform` sebagai pengecualian shared-kernel kedua (setelah `settings` untuk kolom
+	// profil) — lihat knowledge/MODULE_MAP.md.
+	ListStores(ctx context.Context) ([]ListStoresRow, error)
+	ListSubscriptionInvoices(ctx context.Context, arg ListSubscriptionInvoicesParams) ([]SubscriptionInvoice, error)
 	ListSupervisorPins(ctx context.Context, storeID string) ([]ListSupervisorPinsRow, error)
 	ListTables(ctx context.Context, storeID string) ([]DiningTable, error)
 	ListTransactionItems(ctx context.Context, transactionID string) ([]TransactionItem, error)
 	ListWithdrawals(ctx context.Context, arg ListWithdrawalsParams) ([]Withdrawal, error)
 	MarkSelfOrderPaid(ctx context.Context, arg MarkSelfOrderPaidParams) error
+	MarkSubscriptionInvoicePaid(ctx context.Context, arg MarkSubscriptionInvoicePaidParams) (int64, error)
+	// Tolak (pending|processing -> failed), §2.7. Any active superadmin, no ownership restriction.
+	MarkWithdrawalRejected(ctx context.Context, arg MarkWithdrawalRejectedParams) (int64, error)
+	// Tandai Sukses (processing -> success), §2.7. processed_by must match the claimant — 0 rows
+	// means either not processing anymore, or the acting principal isn't who claimed it.
+	MarkWithdrawalSuccess(ctx context.Context, arg MarkWithdrawalSuccessParams) (int64, error)
 	Ping(ctx context.Context) (int32, error)
 	ReportPaymentDistribution(ctx context.Context, arg ReportPaymentDistributionParams) (ReportPaymentDistributionRow, error)
 	ReportRecentTransactions(ctx context.Context, arg ReportRecentTransactionsParams) ([]ReportRecentTransactionsRow, error)
@@ -95,21 +167,49 @@ type Querier interface {
 	ReportStaffPerformance(ctx context.Context, arg ReportStaffPerformanceParams) ([]ReportStaffPerformanceRow, error)
 	ReportTopProducts(ctx context.Context, arg ReportTopProductsParams) ([]ReportTopProductsRow, error)
 	RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) error
+	SetPaymentClientSecret(ctx context.Context, arg SetPaymentClientSecretParams) (int64, error)
+	SetPaymentClientStatus(ctx context.Context, arg SetPaymentClientStatusParams) (int64, error)
+	SetPlatformUserStatus(ctx context.Context, arg SetPlatformUserStatusParams) (int64, error)
 	ShiftCashMovementSummary(ctx context.Context, shiftID sql.NullString) (ShiftCashMovementSummaryRow, error)
 	ShiftSalesSummary(ctx context.Context, shiftID sql.NullString) (ShiftSalesSummaryRow, error)
+	// Revenue platform (superadmin): total seluruh invoice LUNAS, LINTAS SEMUA TENANT — sengaja
+	// tanpa filter store_id, satu-satunya query di modul ini yang boleh begitu.
+	SumPaidSubscriptionInvoices(ctx context.Context) (int64, error)
+	// §2.6 claimable-check basis (narrower than AvailableBalance) for one tenant.
+	SumProcessingWithdrawalsByStore(ctx context.Context, storeID string) (int64, error)
+	// Revenue platform (superadmin): GMV self-order YANG LEWAT QRIS SAJA (bukan cash-di-meja)
+	// LINTAS SEMUA TENANT — hanya QRIS yang settle ke rekening gateway bersama (PLAN.md §2.5),
+	// sengaja tanpa filter store_id, satu-satunya query di modul ini yang boleh begitu.
+	SumSelfOrderQrisRevenue(ctx context.Context) (int64, error)
+	// Sama seperti SumSelfOrderQrisRevenue tapi utk satu tenant — basis AvailableBalance (§2.6).
+	SumSelfOrderQrisRevenueByStore(ctx context.Context, storeID string) (int64, error)
+	// Sama seperti SumSelfOrderQrisRevenue tapi per-tenant sekaligus (Revenue Tenant page, §2.6).
+	SumSelfOrderQrisRevenueGroupedByStore(ctx context.Context) ([]SumSelfOrderQrisRevenueGroupedByStoreRow, error)
+	// Cross-tenant total of status='success' withdrawals — feeds Ringkasan (§2.6's AvailableBalance
+	// is per-tenant; this is the platform-wide figure for GET /platform/revenue).
+	SumSuccessfulWithdrawals(ctx context.Context) (int64, error)
+	// §2.6 AvailableBalance basis for one tenant.
+	SumSuccessfulWithdrawalsByStore(ctx context.Context, storeID string) (int64, error)
+	// §2.6 AvailableBalance basis, all tenants at once (Revenue Tenant page).
+	SumSuccessfulWithdrawalsGroupedByStore(ctx context.Context) ([]SumSuccessfulWithdrawalsGroupedByStoreRow, error)
 	TouchAdminUserLastActive(ctx context.Context, arg TouchAdminUserLastActiveParams) error
 	UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) error
 	UpdateAdminUserPassword(ctx context.Context, arg UpdateAdminUserPasswordParams) error
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) error
+	UpdatePaymentGatewayConfig(ctx context.Context, arg UpdatePaymentGatewayConfigParams) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) error
+	UpdatePlatformUserPassword(ctx context.Context, arg UpdatePlatformUserPasswordParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) error
 	UpdateSelfOrderStatus(ctx context.Context, arg UpdateSelfOrderStatusParams) (int64, error)
 	UpdateStaff(ctx context.Context, arg UpdateStaffParams) error
 	UpdateStaffPassword(ctx context.Context, arg UpdateStaffPasswordParams) error
 	UpdateStaffPin(ctx context.Context, arg UpdateStaffPinParams) error
 	UpdateStoreProfile(ctx context.Context, arg UpdateStoreProfileParams) error
+	UpdateStoreStatus(ctx context.Context, arg UpdateStoreStatusParams) (int64, error)
+	UpdateSubscriptionPlan(ctx context.Context, arg UpdateSubscriptionPlanParams) (int64, error)
 	UpdateTable(ctx context.Context, arg UpdateTableParams) error
 	UpsertSettings(ctx context.Context, arg UpsertSettingsParams) error
+	UpsertStoreSubscriptionPeriod(ctx context.Context, arg UpsertStoreSubscriptionPeriodParams) error
 	// Batalkan transaksi (void). Hanya transaksi 'completed' yang bisa dibatalkan; 0 rows =
 	// tidak ditemukan / sudah dibatalkan. Pengecualian (tunai, dalam shift) ditegakkan di service.
 	VoidTransaction(ctx context.Context, arg VoidTransactionParams) (int64, error)

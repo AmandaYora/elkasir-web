@@ -8,8 +8,11 @@ SELECT * FROM settings WHERE store_id = ? LIMIT 1;
 -- phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
 -- Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
 
+-- slug dibaca (read-only) di sini untuk ditampilkan admin (URL self-order publik
+-- /order/<slug>/<kodeMeja>) — kepemilikan TULIS-nya tetap di modul `platform` (lihat
+-- migration 000016 & knowledge/MODULE_MAP.md); settings tidak pernah menulis slug.
 -- name: GetStoreProfile :one
-SELECT id, name, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1;
+SELECT id, name, slug, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1;
 
 -- name: UpdateStoreProfile :exec
 UPDATE stores

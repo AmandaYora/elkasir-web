@@ -110,7 +110,7 @@ func (q *Queries) GetAdminUserByID(ctx context.Context, id string) (AdminUser, e
 }
 
 const getFirstStore = `-- name: GetFirstStore :one
-SELECT id, name, type, address, phone, timezone, currency, created_at, updated_at, logo_url FROM stores ORDER BY created_at ASC LIMIT 1
+SELECT id, name, type, address, phone, timezone, currency, created_at, updated_at, logo_url, status, slug FROM stores ORDER BY created_at ASC LIMIT 1
 `
 
 func (q *Queries) GetFirstStore(ctx context.Context) (Store, error) {
@@ -127,12 +127,92 @@ func (q *Queries) GetFirstStore(ctx context.Context) (Store, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LogoUrl,
+		&i.Status,
+		&i.Slug,
+	)
+	return i, err
+}
+
+const getPaymentClientForAppLogin = `-- name: GetPaymentClientForAppLogin :one
+SELECT id, app_id, secret_hash, status FROM payment_clients WHERE app_id = ? AND kind = 'external' LIMIT 1
+`
+
+type GetPaymentClientForAppLoginRow struct {
+	ID         string               `json:"id"`
+	AppID      string               `json:"appId"`
+	SecretHash sql.NullString       `json:"secretHash"`
+	Status     PaymentClientsStatus `json:"status"`
+}
+
+// Bacaan langsung ke `payment_clients` — pola yang SAMA persis dengan GetPlatformUserByEmail di
+// atas (auth punya query login-lookup sendiri ke tabel identitas modul lain; CRUD tetap milik
+// `payment`, bukan `auth`). Dipakai HANYA untuk POST /auth/app/token (PLAN.md §10.1.2/§10.1.3).
+func (q *Queries) GetPaymentClientForAppLogin(ctx context.Context, appID string) (GetPaymentClientForAppLoginRow, error) {
+	row := q.db.QueryRowContext(ctx, getPaymentClientForAppLogin, appID)
+	var i GetPaymentClientForAppLoginRow
+	err := row.Scan(
+		&i.ID,
+		&i.AppID,
+		&i.SecretHash,
+		&i.Status,
+	)
+	return i, err
+}
+
+const getPaymentClientStatus = `-- name: GetPaymentClientStatus :one
+SELECT status FROM payment_clients WHERE id = ? LIMIT 1
+`
+
+// Bacaan langsung ke `payment_clients.status` — pengecualian shared-kernel yang sama classnya
+// dengan GetStoreStatus di atas; dipakai utk cek status LIVE per-request utk ActorApp
+// (PLAN.md §10.1.4), bukan kepemilikan tabel oleh `auth`.
+func (q *Queries) GetPaymentClientStatus(ctx context.Context, id string) (PaymentClientsStatus, error) {
+	row := q.db.QueryRowContext(ctx, getPaymentClientStatus, id)
+	var status PaymentClientsStatus
+	err := row.Scan(&status)
+	return status, err
+}
+
+const getPlatformUserByEmail = `-- name: GetPlatformUserByEmail :one
+SELECT id, name, email, password_hash, status, created_at, updated_at FROM platform_users WHERE email = ? LIMIT 1
+`
+
+func (q *Queries) GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error) {
+	row := q.db.QueryRowContext(ctx, getPlatformUserByEmail, email)
+	var i PlatformUser
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPlatformUserByID = `-- name: GetPlatformUserByID :one
+SELECT id, name, email, password_hash, status, created_at, updated_at FROM platform_users WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetPlatformUserByID(ctx context.Context, id string) (PlatformUser, error) {
+	row := q.db.QueryRowContext(ctx, getPlatformUserByID, id)
+	var i PlatformUser
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT id, actor, subject_id, token_hash, expires_at, revoked_at, created_at FROM refresh_tokens WHERE token_hash = ? LIMIT 1
+SELECT id, subject_id, token_hash, expires_at, revoked_at, created_at, actor FROM refresh_tokens WHERE token_hash = ? LIMIT 1
 `
 
 func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -140,12 +220,12 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
-		&i.Actor,
 		&i.SubjectID,
 		&i.TokenHash,
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.Actor,
 	)
 	return i, err
 }
@@ -194,6 +274,20 @@ func (q *Queries) GetStaffByUsername(ctx context.Context, username string) (Staf
 		&i.PinHash,
 	)
 	return i, err
+}
+
+const getStoreStatus = `-- name: GetStoreStatus :one
+SELECT status FROM stores WHERE id = ? LIMIT 1
+`
+
+// Bacaan langsung ke `stores.status` — pengecualian shared-kernel yang sama classnya dengan
+// kolom profil milik `settings` (lihat MODULE_MAP.md); dipakai utk gerbang suspensi tenant
+// (PLAN.md §2.13), bukan kepemilikan tabel oleh `auth`.
+func (q *Queries) GetStoreStatus(ctx context.Context, id string) (StoresStatus, error) {
+	row := q.db.QueryRowContext(ctx, getStoreStatus, id)
+	var status StoresStatus
+	err := row.Scan(&status)
+	return status, err
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec

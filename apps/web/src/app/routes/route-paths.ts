@@ -2,11 +2,27 @@
 export const ROUTE_PATHS = {
   // public
   login: "/login",
-  publicOrder: "/order/:code",
-  publicOrderTo: (code: string) => `/order/${encodeURIComponent(code)}`,
+  platformLogin: "/platform/login",
+  // {slug} toko wajib: kode meja cuma unik per-toko (lihat migration 000016), jadi tenant
+  // harus dari slug, bukan cuma kode meja.
+  publicOrder: "/order/:slug/:code",
+  publicOrderTo: (slug: string, code: string) =>
+    `/order/${encodeURIComponent(slug)}/${encodeURIComponent(code)}`,
 
   // protected (admin shell)
   dashboard: "/",
+  subscription: "/subscription",
+
+  // protected (Konsol Platform shell — see platform.routes.tsx, Phase F3)
+  platformDashboard: "/platform",
+  platformTenants: "/platform/tenants",
+  platformTenantsRevenue: "/platform/tenants/revenue",
+  platformWithdrawals: "/platform/withdrawals",
+  platformWithdrawalHistory: "/platform/withdrawals/history",
+  platformPlans: "/platform/plans",
+  platformUsers: "/platform/users",
+  platformPaymentConfig: "/platform/payment-config",
+  platformPaymentClients: "/platform/payment-clients",
   products: "/products",
   categories: "/categories",
   transactions: "/transactions",

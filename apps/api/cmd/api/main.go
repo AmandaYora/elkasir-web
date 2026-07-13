@@ -160,7 +160,7 @@ func runSeed() error {
 	if err := bootstrap.Seed(ctx, pool); err != nil {
 		return err
 	}
-	slog.Info("seed_done", "admin_email", bootstrap.AdminEmail)
+	slog.Info("seed_done", "admin_email", bootstrap.AdminEmail, "platform_email", bootstrap.PlatformEmail)
 	return nil
 }
 

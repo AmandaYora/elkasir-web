@@ -10,6 +10,39 @@ import (
 	"database/sql"
 )
 
+const createPayment = `-- name: CreatePayment :exec
+
+INSERT INTO payments (id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload)
+VALUES (?, ?, ?, ?, ?, 'qris', ?, ?, ?)
+`
+
+type CreatePaymentParams struct {
+	ID          string           `json:"id"`
+	StoreID     string           `json:"storeId"`
+	SelfOrderID string           `json:"selfOrderId"`
+	Provider    PaymentsProvider `json:"provider"`
+	ProviderRef sql.NullString   `json:"providerRef"`
+	Amount      int64            `json:"amount"`
+	Status      PaymentsStatus   `json:"status"`
+	RawPayload  sql.NullString   `json:"rawPayload"`
+}
+
+// Ledger pembayaran gateway (tabel `payments`) — dimiliki selforder (satu-satunya pemakai);
+// module `payment` sendiri sudah tidak menyentuh tabel ini (lihat webhook_events.sql).
+func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) error {
+	_, err := q.db.ExecContext(ctx, createPayment,
+		arg.ID,
+		arg.StoreID,
+		arg.SelfOrderID,
+		arg.Provider,
+		arg.ProviderRef,
+		arg.Amount,
+		arg.Status,
+		arg.RawPayload,
+	)
+	return err
+}
+
 const createSelfOrder = `-- name: CreateSelfOrder :exec
 INSERT INTO self_orders (
   id, store_id, table_id, status, payment_method, payment_status, claim_code,
@@ -103,23 +136,25 @@ func (q *Queries) ExpireOverdueSelfOrders(ctx context.Context, arg ExpireOverdue
 	return result.RowsAffected()
 }
 
-const findTableByCode = `-- name: FindTableByCode :one
-SELECT id, store_id, code, name, area, seats, status, created_at, updated_at FROM dining_tables WHERE code = ? LIMIT 1
+const getPaymentBySelfOrder = `-- name: GetPaymentBySelfOrder :one
+SELECT id, store_id, self_order_id, provider_ref, method, amount, status, raw_payload, created_at, updated_at, provider FROM payments WHERE self_order_id = ? ORDER BY created_at DESC LIMIT 1
 `
 
-func (q *Queries) FindTableByCode(ctx context.Context, code string) (DiningTable, error) {
-	row := q.db.QueryRowContext(ctx, findTableByCode, code)
-	var i DiningTable
+func (q *Queries) GetPaymentBySelfOrder(ctx context.Context, selfOrderID string) (Payment, error) {
+	row := q.db.QueryRowContext(ctx, getPaymentBySelfOrder, selfOrderID)
+	var i Payment
 	err := row.Scan(
 		&i.ID,
 		&i.StoreID,
-		&i.Code,
-		&i.Name,
-		&i.Area,
-		&i.Seats,
+		&i.SelfOrderID,
+		&i.ProviderRef,
+		&i.Method,
+		&i.Amount,
 		&i.Status,
+		&i.RawPayload,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
 	)
 	return i, err
 }
@@ -315,6 +350,21 @@ type MarkSelfOrderPaidParams struct {
 
 func (q *Queries) MarkSelfOrderPaid(ctx context.Context, arg MarkSelfOrderPaidParams) error {
 	_, err := q.db.ExecContext(ctx, markSelfOrderPaid, arg.TransactionID, arg.Status, arg.ID)
+	return err
+}
+
+const updatePaymentStatus = `-- name: UpdatePaymentStatus :exec
+UPDATE payments SET status = ?, raw_payload = ? WHERE id = ?
+`
+
+type UpdatePaymentStatusParams struct {
+	Status     PaymentsStatus `json:"status"`
+	RawPayload sql.NullString `json:"rawPayload"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updatePaymentStatus, arg.Status, arg.RawPayload, arg.ID)
 	return err
 }
 

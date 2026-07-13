@@ -10,6 +10,38 @@ import (
 	"database/sql"
 )
 
+const claimWithdrawal = `-- name: ClaimWithdrawal :execrows
+UPDATE withdrawals SET status = 'processing', processed_by = ?, claimed_at = ?
+WHERE id = ? AND status = 'pending'
+`
+
+type ClaimWithdrawalParams struct {
+	ProcessedBy sql.NullString `json:"processedBy"`
+	ClaimedAt   sql.NullTime   `json:"claimedAt"`
+	ID          string         `json:"id"`
+}
+
+// Klaim (pending -> processing), §2.7. Atomic conditional UPDATE — 0 rows affected means the
+// request was no longer pending (already claimed/rejected by someone else).
+func (q *Queries) ClaimWithdrawal(ctx context.Context, arg ClaimWithdrawalParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimWithdrawal, arg.ProcessedBy, arg.ClaimedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const countAllWithdrawals = `-- name: CountAllWithdrawals :one
+SELECT COUNT(*) FROM withdrawals
+`
+
+func (q *Queries) CountAllWithdrawals(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAllWithdrawals)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countWithdrawals = `-- name: CountWithdrawals :one
 SELECT COUNT(*) FROM withdrawals WHERE store_id = ?
 `
@@ -53,8 +85,128 @@ func (q *Queries) CreateWithdrawal(ctx context.Context, arg CreateWithdrawalPara
 	return err
 }
 
+const getWithdrawal = `-- name: GetWithdrawal :one
+SELECT id, store_id, amount, bank, account, holder, status, reference, requested_by, created_at, updated_at, processed_by, claimed_at, processed_at, rejected_reason FROM withdrawals WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetWithdrawal(ctx context.Context, id string) (Withdrawal, error) {
+	row := q.db.QueryRowContext(ctx, getWithdrawal, id)
+	var i Withdrawal
+	err := row.Scan(
+		&i.ID,
+		&i.StoreID,
+		&i.Amount,
+		&i.Bank,
+		&i.Account,
+		&i.Holder,
+		&i.Status,
+		&i.Reference,
+		&i.RequestedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProcessedBy,
+		&i.ClaimedAt,
+		&i.ProcessedAt,
+		&i.RejectedReason,
+	)
+	return i, err
+}
+
+const listActiveWithdrawals = `-- name: ListActiveWithdrawals :many
+SELECT id, store_id, amount, bank, account, holder, status, reference, requested_by, created_at, updated_at, processed_by, claimed_at, processed_at, rejected_reason FROM withdrawals WHERE status IN ('pending','processing') ORDER BY created_at ASC
+`
+
+// Cross-tenant, superadmin Penarikan page (PLAN.md §2.7) — pending + processing only.
+func (q *Queries) ListActiveWithdrawals(ctx context.Context) ([]Withdrawal, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveWithdrawals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Withdrawal{}
+	for rows.Next() {
+		var i Withdrawal
+		if err := rows.Scan(
+			&i.ID,
+			&i.StoreID,
+			&i.Amount,
+			&i.Bank,
+			&i.Account,
+			&i.Holder,
+			&i.Status,
+			&i.Reference,
+			&i.RequestedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProcessedBy,
+			&i.ClaimedAt,
+			&i.ProcessedAt,
+			&i.RejectedReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllWithdrawals = `-- name: ListAllWithdrawals :many
+SELECT id, store_id, amount, bank, account, holder, status, reference, requested_by, created_at, updated_at, processed_by, claimed_at, processed_at, rejected_reason FROM withdrawals ORDER BY created_at DESC LIMIT ? OFFSET ?
+`
+
+type ListAllWithdrawalsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+// Cross-tenant, superadmin Riwayat Penarikan page — any status, paginated.
+func (q *Queries) ListAllWithdrawals(ctx context.Context, arg ListAllWithdrawalsParams) ([]Withdrawal, error) {
+	rows, err := q.db.QueryContext(ctx, listAllWithdrawals, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Withdrawal{}
+	for rows.Next() {
+		var i Withdrawal
+		if err := rows.Scan(
+			&i.ID,
+			&i.StoreID,
+			&i.Amount,
+			&i.Bank,
+			&i.Account,
+			&i.Holder,
+			&i.Status,
+			&i.Reference,
+			&i.RequestedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProcessedBy,
+			&i.ClaimedAt,
+			&i.ProcessedAt,
+			&i.RejectedReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWithdrawals = `-- name: ListWithdrawals :many
-SELECT id, store_id, amount, bank, account, holder, status, reference, requested_by, created_at, updated_at FROM withdrawals WHERE store_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
+SELECT id, store_id, amount, bank, account, holder, status, reference, requested_by, created_at, updated_at, processed_by, claimed_at, processed_at, rejected_reason FROM withdrawals WHERE store_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListWithdrawalsParams struct {
@@ -84,7 +236,129 @@ func (q *Queries) ListWithdrawals(ctx context.Context, arg ListWithdrawalsParams
 			&i.RequestedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ProcessedBy,
+			&i.ClaimedAt,
+			&i.ProcessedAt,
+			&i.RejectedReason,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markWithdrawalRejected = `-- name: MarkWithdrawalRejected :execrows
+UPDATE withdrawals SET status = 'failed', processed_by = ?, processed_at = ?, rejected_reason = ?
+WHERE id = ? AND status IN ('pending','processing')
+`
+
+type MarkWithdrawalRejectedParams struct {
+	ProcessedBy    sql.NullString `json:"processedBy"`
+	ProcessedAt    sql.NullTime   `json:"processedAt"`
+	RejectedReason sql.NullString `json:"rejectedReason"`
+	ID             string         `json:"id"`
+}
+
+// Tolak (pending|processing -> failed), §2.7. Any active superadmin, no ownership restriction.
+func (q *Queries) MarkWithdrawalRejected(ctx context.Context, arg MarkWithdrawalRejectedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markWithdrawalRejected,
+		arg.ProcessedBy,
+		arg.ProcessedAt,
+		arg.RejectedReason,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markWithdrawalSuccess = `-- name: MarkWithdrawalSuccess :execrows
+UPDATE withdrawals SET status = 'success', processed_at = ?
+WHERE id = ? AND status = 'processing' AND processed_by = ?
+`
+
+type MarkWithdrawalSuccessParams struct {
+	ProcessedAt sql.NullTime   `json:"processedAt"`
+	ID          string         `json:"id"`
+	ProcessedBy sql.NullString `json:"processedBy"`
+}
+
+// Tandai Sukses (processing -> success), §2.7. processed_by must match the claimant — 0 rows
+// means either not processing anymore, or the acting principal isn't who claimed it.
+func (q *Queries) MarkWithdrawalSuccess(ctx context.Context, arg MarkWithdrawalSuccessParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markWithdrawalSuccess, arg.ProcessedAt, arg.ID, arg.ProcessedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const sumProcessingWithdrawalsByStore = `-- name: SumProcessingWithdrawalsByStore :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS SIGNED) FROM withdrawals WHERE status = 'processing' AND store_id = ?
+`
+
+// §2.6 claimable-check basis (narrower than AvailableBalance) for one tenant.
+func (q *Queries) SumProcessingWithdrawalsByStore(ctx context.Context, storeID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumProcessingWithdrawalsByStore, storeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sumSuccessfulWithdrawals = `-- name: SumSuccessfulWithdrawals :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS SIGNED) FROM withdrawals WHERE status = 'success'
+`
+
+// Cross-tenant total of status='success' withdrawals — feeds Ringkasan (§2.6's AvailableBalance
+// is per-tenant; this is the platform-wide figure for GET /platform/revenue).
+func (q *Queries) SumSuccessfulWithdrawals(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumSuccessfulWithdrawals)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sumSuccessfulWithdrawalsByStore = `-- name: SumSuccessfulWithdrawalsByStore :one
+SELECT CAST(COALESCE(SUM(amount), 0) AS SIGNED) FROM withdrawals WHERE status = 'success' AND store_id = ?
+`
+
+// §2.6 AvailableBalance basis for one tenant.
+func (q *Queries) SumSuccessfulWithdrawalsByStore(ctx context.Context, storeID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumSuccessfulWithdrawalsByStore, storeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sumSuccessfulWithdrawalsGroupedByStore = `-- name: SumSuccessfulWithdrawalsGroupedByStore :many
+SELECT store_id, CAST(COALESCE(SUM(amount), 0) AS SIGNED) AS total
+FROM withdrawals WHERE status = 'success' GROUP BY store_id
+`
+
+type SumSuccessfulWithdrawalsGroupedByStoreRow struct {
+	StoreID string `json:"storeId"`
+	Total   int64  `json:"total"`
+}
+
+// §2.6 AvailableBalance basis, all tenants at once (Revenue Tenant page).
+func (q *Queries) SumSuccessfulWithdrawalsGroupedByStore(ctx context.Context) ([]SumSuccessfulWithdrawalsGroupedByStoreRow, error) {
+	rows, err := q.db.QueryContext(ctx, sumSuccessfulWithdrawalsGroupedByStore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SumSuccessfulWithdrawalsGroupedByStoreRow{}
+	for rows.Next() {
+		var i SumSuccessfulWithdrawalsGroupedByStoreRow
+		if err := rows.Scan(&i.StoreID, &i.Total); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

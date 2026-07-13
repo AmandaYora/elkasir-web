@@ -14,8 +14,14 @@ import (
 type Actor string
 
 const (
-	ActorAdmin Actor = "admin"
-	ActorStaff Actor = "staff"
+	ActorAdmin    Actor = "admin"
+	ActorStaff    Actor = "staff"
+	ActorPlatform Actor = "platform" // superadmin operator — NOT scoped to any store_id
+	// ActorApp identifies an external payment API caller (PLAN.md §10.1.1) — a registered
+	// `payment_clients` row (kind='external'), NOT scoped to any store_id. SubjectID holds the
+	// row's ULID. No refresh token is ever issued for this actor (§10.1.3) — see
+	// POST /auth/app/token.
+	ActorApp Actor = "app"
 )
 
 // Principal is the authenticated identity carried in the request context.

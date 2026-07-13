@@ -25,8 +25,10 @@ func toClientTable(t sqlcgen.DiningTable) tableclient.Table {
 	}
 }
 
-func (c *apiClient) FindByCode(ctx context.Context, code string) (tableclient.Table, error) {
-	t, err := c.uow.Q(ctx).FindTableByCode(ctx, code)
+func (c *apiClient) FindByCode(ctx context.Context, storeSlug, code string) (tableclient.Table, error) {
+	t, err := c.uow.Q(ctx).FindTableByStoreSlugAndCode(ctx, sqlcgen.FindTableByStoreSlugAndCodeParams{
+		Slug: storeSlug, Code: code,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return tableclient.Table{}, tableclient.ErrNotFound
 	}

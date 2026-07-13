@@ -22,6 +22,8 @@ import { Drawer } from "@/shared/components/ui/drawer";
 import { Pagination } from "@/shared/components/ui/pagination";
 import { LoadingState, ErrorState, EmptyState } from "@/shared/components/feedback";
 import { useAsync } from "@/shared/hooks/useAsync";
+import { ROUTE_PATHS } from "@/app/routes/route-paths";
+import { settingsService } from "@/modules/settings/services/settings.service";
 import { tablesService } from "@/modules/tables/services/tables.service";
 import { tableSchema } from "@/modules/tables/schemas/table.schema";
 import { TableStatusBadge } from "@/modules/tables/components/TableStatusBadge";
@@ -29,11 +31,16 @@ import type { DiningTable, TableInput, TableStatus } from "@/modules/tables/type
 
 const PAGE_SIZE = 10;
 
-const orderUrl = (code: string) => `${window.location.origin}/order/${code}`;
+// {slug} toko wajib di URL QR: kode meja cuma unik per-toko (lihat migration 000016), jadi
+// tanpa slug, scan QR bisa salah-tenant kalau 2 toko kebetulan pakai kode meja yang sama.
+const orderUrl = (slug: string, code: string) =>
+  `${window.location.origin}${ROUTE_PATHS.publicOrderTo(slug, code)}`;
 
 export default function TablesPage() {
   const tablesQuery = useAsync(() => tablesService.list({ limit: 200 }), []);
   const list = tablesQuery.data?.data ?? [];
+  const settingsQuery = useAsync(() => settingsService.get(), []);
+  const storeSlug = settingsQuery.data?.storeSlug ?? "";
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
@@ -238,12 +245,17 @@ export default function TablesPage() {
         {detail && (
           <div className="space-y-5">
             <div className="flex flex-col items-center rounded-xl border border-border p-5">
-              <QRCodeCanvas ref={qrRef} value={orderUrl(detail.code)} size={220} includeMargin />
+              <QRCodeCanvas
+                ref={qrRef}
+                value={orderUrl(storeSlug, detail.code)}
+                size={220}
+                includeMargin
+              />
               <div className="mt-3 font-mono text-sm font-semibold tracking-wider">
                 MEJA {detail.code}
               </div>
               <div className="mt-1 break-all text-center text-xs text-muted">
-                {orderUrl(detail.code)}
+                {orderUrl(storeSlug, detail.code)}
               </div>
             </div>
             <div className="flex gap-2">
@@ -286,7 +298,7 @@ export default function TablesPage() {
           setEditing(null);
         }}
         title={editing ? "Ubah Meja" : "Tambah Meja"}
-        description="Kode meja menjadi isi QR (mis. A1 → /order/A1). Harus unik."
+        description="Kode meja menjadi bagian isi QR (mis. A1 → /order/<toko>/A1). Harus unik per toko."
       >
         <TableForm
           key={editing?.id ?? "new"}

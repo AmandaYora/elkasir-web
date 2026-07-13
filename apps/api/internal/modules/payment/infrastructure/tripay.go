@@ -1,6 +1,6 @@
-// Gateway Tripay (Closed Payment — QRIS, sandbox/production). API Key untuk Bearer auth;
-// Private Key untuk signature charge (HMAC-SHA256(merchantCode+merchantRef+amount)) dan
-// verifikasi signature callback (HMAC-SHA256 atas raw body, header X-Callback-Signature).
+// Gateway Tripay (Closed Payment — QRIS + Virtual Account, sandbox/production). API Key untuk
+// Bearer auth; Private Key untuk signature charge (HMAC-SHA256(merchantCode+merchantRef+amount))
+// dan verifikasi signature callback (HMAC-SHA256 atas raw body, header X-Callback-Signature).
 package infrastructure
 
 import (
@@ -26,7 +26,7 @@ type tripayGateway struct {
 	apiKey       string
 	privateKey   string
 	merchantCode string
-	method       string // kode channel QRIS (mis. "QRIS")
+	method       string // kode channel QRIS default (mis. "QRIS") — dipakai bila channel=ChannelQRIS
 	baseURL      string
 	callbackURL  string
 	http         *http.Client
@@ -59,6 +59,24 @@ func (g *tripayGateway) hmac(msg string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// channelMethod menerjemahkan Channel+opts jadi kode channel Tripay ("method" pada
+// transaction/create). VA WAJIB menyertakan opts.BankCode (kode channel VA sesungguhnya, mis.
+// "BCAVA") — tidak ada daftar bank yang di-hardcode di sini (§9.1.8); kode yang salah/tidak
+// aktif akan ditolak Tripay sendiri saat charge dibuat.
+func channelMethod(g *tripayGateway, channel paymentclient.Channel, opts paymentclient.ChannelOptions) (string, error) {
+	switch channel {
+	case paymentclient.ChannelQRIS, "":
+		return g.method, nil
+	case paymentclient.ChannelVA:
+		if strings.TrimSpace(opts.BankCode) == "" {
+			return "", fmt.Errorf("tripay: channel virtual_account butuh ChannelOptions.BankCode")
+		}
+		return opts.BankCode, nil
+	default:
+		return "", fmt.Errorf("tripay: channel %q belum didukung", channel)
+	}
+}
+
 // ── Charge (transaction/create) ──────────────────────────────
 type tpEnvelope struct {
 	Success bool            `json:"success"`
@@ -70,13 +88,20 @@ type tpEnvelope struct {
 type tpChargeData struct {
 	Reference   string `json:"reference"`
 	MerchantRef string `json:"merchant_ref"`
+	PaymentName string `json:"payment_name"`
 	QRString    string `json:"qr_string"`
 	QRURL       string `json:"qr_url"`
+	PayCode     string `json:"pay_code"` // nomor VA / kode bayar retail, kosong untuk QRIS
 	CheckoutURL string `json:"checkout_url"`
 	Status      string `json:"status"`
 }
 
-func (g *tripayGateway) createCharge(ctx context.Context, orderRef string, amount int64) (qrResult, error) {
+func (g *tripayGateway) createCharge(ctx context.Context, orderRef string, amount int64, channel paymentclient.Channel, opts paymentclient.ChannelOptions) (chargeResult, error) {
+	method, err := channelMethod(g, channel, opts)
+	if err != nil {
+		return chargeResult{}, err
+	}
+
 	// signature = HMAC-SHA256(merchant_code + merchant_ref + amount, private_key)
 	sig := g.hmac(g.merchantCode + orderRef + strconv.FormatInt(amount, 10))
 	amountStr := strconv.FormatInt(amount, 10)
@@ -84,7 +109,7 @@ func (g *tripayGateway) createCharge(ctx context.Context, orderRef string, amoun
 	// Tripay transaction/create mengharapkan body x-www-form-urlencoded (order_items sebagai
 	// array bracket-notation), bukan JSON — lihat dokumentasi resmi.
 	form := url.Values{}
-	form.Set("method", g.method)
+	form.Set("method", method)
 	form.Set("merchant_ref", orderRef)
 	form.Set("amount", amountStr)
 	form.Set("customer_name", "Pelanggan Elkasir")
@@ -100,7 +125,7 @@ func (g *tripayGateway) createCharge(ctx context.Context, orderRef string, amoun
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/transaction/create", strings.NewReader(form.Encode()))
 	if err != nil {
-		return qrResult{}, err
+		return chargeResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+g.apiKey)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -108,26 +133,28 @@ func (g *tripayGateway) createCharge(ctx context.Context, orderRef string, amoun
 
 	resp, err := g.http.Do(req)
 	if err != nil {
-		return qrResult{}, err
+		return chargeResult{}, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	var env tpEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return qrResult{}, fmt.Errorf("tripay: parse response (HTTP %d): %w", resp.StatusCode, err)
+		return chargeResult{}, fmt.Errorf("tripay: parse response (HTTP %d): %w", resp.StatusCode, err)
 	}
 	if !env.Success {
 		msg := env.Message
 		if msg == "" {
 			msg = string(raw)
 		}
-		return qrResult{}, fmt.Errorf("tripay: charge ditolak (HTTP %d): %s", resp.StatusCode, msg)
+		return chargeResult{}, fmt.Errorf("tripay: charge ditolak (HTTP %d): %s", resp.StatusCode, msg)
 	}
-	return qrResult{
+	return chargeResult{
 		Ref:        env.Data.Reference,
 		QRString:   env.Data.QRString,
 		QRImageURL: firstNonEmpty(env.Data.QRURL, env.Data.CheckoutURL),
+		VANumber:   env.Data.PayCode,
+		VABankCode: method,
 	}, nil
 }
 
@@ -147,7 +174,7 @@ type tpFeeResponse struct {
 // tarif QRIS standar Tripay (Rp750 + 0,7%) — dipakai sebagai fallback bila kalkulator live
 // tak terjangkau agar checkout tidak terblokir. Untuk QRIS, total_fee.merchant = nilai ini.
 const (
-	tripayQRISFeeFlat    int64 = 750
+	tripayQRISFeeFlat     int64 = 750
 	tripayQRISFeePerMille int64 = 7 // 0,7%
 )
 
@@ -193,6 +220,85 @@ func (g *tripayGateway) quoteFee(ctx context.Context, amount int64) (int64, erro
 		}
 	}
 	return fr.Data[0].TotalFee.Merchant, nil
+}
+
+// ── Channel listing (§9.1.8) ──────────────────────────────────
+type tpChannelResponse struct {
+	Success bool `json:"success"`
+	Data    []struct {
+		Group  string `json:"group"`
+		Code   string `json:"code"`
+		Name   string `json:"name"`
+		Active bool   `json:"active"`
+	} `json:"data"`
+}
+
+// listChannels memanggil GET /merchant/payment-channel — daftar kanal AKTIF di akun ini saat
+// ini, live dari Tripay. Tidak ada kode bank yang di-hardcode; hasil ini yang menentukan
+// BankCode mana yang valid dipakai di ChannelOptions saat CreateChannelCharge(ChannelVA, ...).
+func (g *tripayGateway) listChannels(ctx context.Context) ([]paymentclient.ChannelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/merchant/payment-channel", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var cr tpChannelResponse
+	if err := json.Unmarshal(raw, &cr); err != nil || !cr.Success {
+		return nil, fmt.Errorf("tripay: gagal mengambil daftar channel (HTTP %d)", resp.StatusCode)
+	}
+	out := make([]paymentclient.ChannelInfo, 0, len(cr.Data))
+	for _, d := range cr.Data {
+		ch := paymentclient.ChannelVA
+		if strings.EqualFold(d.Group, "QRIS") || strings.EqualFold(d.Code, "QRIS") {
+			ch = paymentclient.ChannelQRIS
+		}
+		out = append(out, paymentclient.ChannelInfo{Channel: ch, Code: d.Code, Name: d.Name, Active: d.Active})
+	}
+	return out, nil
+}
+
+// ── Status check (§9.1.8) ─────────────────────────────────────
+type tpDetailResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		Status string `json:"status"`
+	} `json:"data"`
+}
+
+// checkStatus memanggil GET /transaction/detail?reference= — pull-based, independen webhook.
+func (g *tripayGateway) checkStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error) {
+	u := fmt.Sprintf("%s/transaction/detail?reference=%s", g.baseURL, url.QueryEscape(providerRef))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return paymentclient.ChargeStatus{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return paymentclient.ChargeStatus{}, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var dr tpDetailResponse
+	if err := json.Unmarshal(raw, &dr); err != nil || !dr.Success {
+		return paymentclient.ChargeStatus{}, fmt.Errorf("tripay: gagal mengambil status transaksi (HTTP %d)", resp.StatusCode)
+	}
+	return paymentclient.ChargeStatus{
+		Paid:      strings.EqualFold(strings.TrimSpace(dr.Data.Status), "PAID"),
+		RawStatus: dr.Data.Status,
+	}, nil
 }
 
 // ── Callback ─────────────────────────────────────────────────

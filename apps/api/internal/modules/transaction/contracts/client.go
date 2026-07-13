@@ -52,6 +52,14 @@ type VoidSaleInput struct {
 	Reason   string
 }
 
+// TenantAmount adalah pasangan store_id + nominal, dipakai oleh method per-tenant di kontrak
+// ini (mis. PlatformSelfOrderQrisRevenueByTenant) — bentuk generik, dikonsumsi module lain
+// (mis. `withdrawal`) untuk digabung (di Go, bukan SQL) dengan data milik tabel mereka sendiri.
+type TenantAmount struct {
+	StoreID string
+	Amount  int64
+}
+
 // Client adalah kontrak yang dipublikasikan modul transaction.
 type Client interface {
 	// RecordSale menyisipkan transaksi + item (+ idempotency bila ada) dan mengembalikan
@@ -61,4 +69,17 @@ type Client interface {
 	// dipanggil di dalam uow.Run agar atomik dengan restock. ok=false bila tak ada baris
 	// 'completed' yang cocok (sudah dibatalkan / tak ditemukan).
 	VoidSale(ctx context.Context, in VoidSaleInput) (ok bool, err error)
+	// PlatformSelfOrderQrisRevenue mengembalikan total GMV self-order YANG LEWAT QRIS SAJA
+	// LINTAS SEMUA TENANT — dipakai HANYA oleh modul `platform` (dashboard superadmin). Cash
+	// self-order sengaja tidak dihitung (PLAN.md §2.5): tidak pernah menyentuh gateway, jadi
+	// tidak relevan untuk rekonsiliasi saldo. Sengaja tanpa filter store_id; ini dan kedua
+	// method di bawah adalah satu-satunya di kontrak ini yang boleh begitu.
+	PlatformSelfOrderQrisRevenue(ctx context.Context) (int64, error)
+	// SelfOrderQrisRevenueForStore adalah versi ter-scope satu tenant dari method di atas —
+	// basis `AvailableBalance` (§2.6), dikonsumsi oleh `withdrawal`.
+	SelfOrderQrisRevenueForStore(ctx context.Context, storeID string) (int64, error)
+	// PlatformSelfOrderQrisRevenueByTenant mengembalikan basis yang sama per-tenant sekaligus
+	// (dipakai `withdrawal` utk menyusun AvailableBalanceByTenant, digabung di Go dengan sum
+	// withdrawal sukses milik tabelnya sendiri — bukan SQL join lintas modul).
+	PlatformSelfOrderQrisRevenueByTenant(ctx context.Context) ([]TenantAmount, error)
 }

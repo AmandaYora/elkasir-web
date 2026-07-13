@@ -294,6 +294,67 @@ func (q *Queries) ListTransactionItems(ctx context.Context, transactionID string
 	return items, nil
 }
 
+const sumSelfOrderQrisRevenue = `-- name: SumSelfOrderQrisRevenue :one
+SELECT CAST(COALESCE(SUM(total), 0) AS SIGNED) FROM transactions WHERE source = 'self_order' AND payment_method = 'qris' AND status = 'completed'
+`
+
+// Revenue platform (superadmin): GMV self-order YANG LEWAT QRIS SAJA (bukan cash-di-meja)
+// LINTAS SEMUA TENANT — hanya QRIS yang settle ke rekening gateway bersama (PLAN.md §2.5),
+// sengaja tanpa filter store_id, satu-satunya query di modul ini yang boleh begitu.
+func (q *Queries) SumSelfOrderQrisRevenue(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumSelfOrderQrisRevenue)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sumSelfOrderQrisRevenueByStore = `-- name: SumSelfOrderQrisRevenueByStore :one
+SELECT CAST(COALESCE(SUM(total), 0) AS SIGNED) FROM transactions WHERE source = 'self_order' AND payment_method = 'qris' AND status = 'completed' AND store_id = ?
+`
+
+// Sama seperti SumSelfOrderQrisRevenue tapi utk satu tenant — basis AvailableBalance (§2.6).
+func (q *Queries) SumSelfOrderQrisRevenueByStore(ctx context.Context, storeID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumSelfOrderQrisRevenueByStore, storeID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sumSelfOrderQrisRevenueGroupedByStore = `-- name: SumSelfOrderQrisRevenueGroupedByStore :many
+SELECT store_id, CAST(COALESCE(SUM(total), 0) AS SIGNED) AS total
+FROM transactions WHERE source = 'self_order' AND payment_method = 'qris' AND status = 'completed'
+GROUP BY store_id
+`
+
+type SumSelfOrderQrisRevenueGroupedByStoreRow struct {
+	StoreID string `json:"storeId"`
+	Total   int64  `json:"total"`
+}
+
+// Sama seperti SumSelfOrderQrisRevenue tapi per-tenant sekaligus (Revenue Tenant page, §2.6).
+func (q *Queries) SumSelfOrderQrisRevenueGroupedByStore(ctx context.Context) ([]SumSelfOrderQrisRevenueGroupedByStoreRow, error) {
+	rows, err := q.db.QueryContext(ctx, sumSelfOrderQrisRevenueGroupedByStore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SumSelfOrderQrisRevenueGroupedByStoreRow{}
+	for rows.Next() {
+		var i SumSelfOrderQrisRevenueGroupedByStoreRow
+		if err := rows.Scan(&i.StoreID, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const voidTransaction = `-- name: VoidTransaction :execrows
 UPDATE transactions
 SET status = 'voided', voided_at = ?, voided_by = ?,

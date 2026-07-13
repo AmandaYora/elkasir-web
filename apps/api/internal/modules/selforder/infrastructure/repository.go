@@ -87,6 +87,44 @@ func (r *Repo) ExpireOverdue(ctx context.Context, storeID string, now time.Time)
 	})
 }
 
+// ── Ledger pembayaran gateway (tabel `payments`, milik selforder) ───────────────────────
+// Modul payment TIDAK menulis tabel ini (lihat payment/infrastructure/client.go) — selforder
+// adalah SATU-SATUNYA pemilik & penulis, sesuai pemisahan data per-domain bisnis.
+
+type RecordPaymentData struct {
+	StoreID     string
+	SelfOrderID string
+	Provider    string // "tripay" | "midtrans" — dari paymentclient.Charge.Provider
+	ProviderRef string
+	Amount      int64
+}
+
+// RecordPayment mencatat baris ledger untuk satu charge QRIS. Best-effort by design —
+// self_orders.payment_status (ditegakkan lewat webhook) tetap sumber kebenaran status bayar;
+// baris ini hanya riwayat/rekonsiliasi. Pemanggil boleh mengabaikan errornya.
+func (r *Repo) RecordPayment(ctx context.Context, d RecordPaymentData) error {
+	return r.uow.Q(ctx).CreatePayment(ctx, sqlcgen.CreatePaymentParams{
+		ID: id.New(), StoreID: d.StoreID, SelfOrderID: d.SelfOrderID,
+		Provider:    sqlcgen.PaymentsProvider(d.Provider),
+		ProviderRef: sql.NullString{String: d.ProviderRef, Valid: d.ProviderRef != ""},
+		Amount:      d.Amount, Status: sqlcgen.PaymentsStatusPending,
+	})
+}
+
+// MarkPaymentPaidBestEffort menandai baris ledger terbaru milik self-order sebagai lunas.
+// No-op (senyap) bila tak ada baris (mis. jalur cash, yang tak pernah membuat baris payments).
+// Dipanggil DI DALAM fulfill (uow.Run) agar ikut transaksi atomik yang sama.
+func (r *Repo) MarkPaymentPaidBestEffort(ctx context.Context, selfOrderID string) {
+	q := r.uow.Q(ctx)
+	p, err := q.GetPaymentBySelfOrder(ctx, selfOrderID)
+	if err != nil {
+		return
+	}
+	_ = q.UpdatePaymentStatus(ctx, sqlcgen.UpdatePaymentStatusParams{
+		ID: p.ID, Status: sqlcgen.PaymentsStatusPaid, RawPayload: p.RawPayload,
+	})
+}
+
 // ListIncoming mengembalikan self-order (opsional difilter status) + total.
 func (r *Repo) ListIncoming(ctx context.Context, storeID, status string, limit, offset int) ([]sqlcgen.SelfOrder, int64, error) {
 	where := "WHERE store_id = ?"
