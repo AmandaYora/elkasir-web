@@ -628,11 +628,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/order/{tableCode}": {
+    "/public/order/{storeSlug}/{tableCode}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                storeSlug: string;
                 tableCode: string;
             };
             cookie?: never;
@@ -648,11 +649,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/order/{tableCode}/quote": {
+    "/public/order/{storeSlug}/{tableCode}/quote": {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                storeSlug: string;
                 tableCode: string;
             };
             cookie?: never;
@@ -1247,9 +1249,11 @@ export interface components {
             account: string;
             holder: string;
             /** @enum {string} */
-            status: "pending" | "paid" | "rejected";
+            status: "pending" | "processing" | "success" | "failed";
             reference?: string;
             requestedBy?: string;
+            /** @description Set only when status=failed. */
+            rejectedReason?: string;
             /** Format: date-time */
             createdAt: string;
         };
@@ -1462,6 +1466,8 @@ export interface components {
         Settings: {
             /** @description Nama toko, tampil di header struk. */
             storeName: string;
+            /** @description Identitas tenant di URL self-order publik (/order/<slug>/<kodeMeja>). Read-only — dikelola modul platform (superadmin), bukan lewat endpoint ini. */
+            storeSlug?: string;
             storePhone: string;
             storeAddress: string;
             /** @description URL logo toko. Unggah lewat POST /uploads (category=store-logo), lalu simpan URL-nya di sini. */
@@ -3122,6 +3128,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                storeSlug: string;
                 tableCode: string;
             };
             cookie?: never;
@@ -3146,6 +3153,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                storeSlug: string;
                 tableCode: string;
             };
             cookie?: never;
@@ -3176,6 +3184,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                storeSlug: string;
                 tableCode: string;
             };
             cookie?: never;
