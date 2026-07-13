@@ -1,7 +1,7 @@
 {
   "name": "elkasir",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Elkasir monorepo (POS F&B) — apps/web (React 19 + Tailwind 4) + apps/api (Go modular monolith) + packages/api-contract (OpenAPI) + packages/shared. No Turborepo, no TanStack.",
   "workspaces": [
     "apps/web",
