@@ -1,67 +1,33 @@
 import { NavLink } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Package,
-  Tags,
-  Receipt,
-  Clock,
-  Banknote,
-  ArrowDownToLine,
-  BarChart3,
-  Users,
-  LayoutGrid,
-  ShieldCheck,
-  Inbox,
-  SlidersHorizontal,
-} from "lucide-react";
-import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import { appBrand } from "@/shared/constants/brand";
 import { cn } from "@/shared/lib/cn";
 
-type NavItem = { title: string; to: string; icon: React.ComponentType<{ className?: string }> };
+export type NavItem = {
+  title: string;
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  /** NavLink `end` — only needed for a group's own root path (e.g. the dashboard). */
+  end?: boolean;
+};
+export type NavGroup = { label: string; items: NavItem[] };
 
-const groups: { label: string; items: NavItem[] }[] = [
-  {
-    label: "Ikhtisar",
-    items: [
-      { title: "Dasbor", to: ROUTE_PATHS.dashboard, icon: LayoutDashboard },
-      { title: "Produk", to: ROUTE_PATHS.products, icon: Package },
-      { title: "Kategori Produk", to: ROUTE_PATHS.categories, icon: Tags },
-      { title: "Transaksi", to: ROUTE_PATHS.transactions, icon: Receipt },
-    ],
-  },
-  {
-    label: "Operasional",
-    items: [
-      { title: "Pesanan Masuk", to: ROUTE_PATHS.incoming, icon: Inbox },
-      { title: "Shift Staf", to: ROUTE_PATHS.shifts, icon: Clock },
-      { title: "Meja", to: ROUTE_PATHS.tables, icon: LayoutGrid },
-      { title: "Mutasi Kas", to: ROUTE_PATHS.cashMovements, icon: Banknote },
-      { title: "Penarikan", to: ROUTE_PATHS.withdrawals, icon: ArrowDownToLine },
-    ],
-  },
-  {
-    label: "Analitik",
-    items: [
-      { title: "Statistik", to: ROUTE_PATHS.statistics, icon: BarChart3 },
-      { title: "Staf", to: ROUTE_PATHS.staff, icon: Users },
-      { title: "Pengguna", to: ROUTE_PATHS.users, icon: ShieldCheck },
-    ],
-  },
-  {
-    label: "Sistem",
-    items: [{ title: "Pengaturan", to: ROUTE_PATHS.settings, icon: SlidersHorizontal }],
-  },
-];
-
-export function AppSidebar() {
+// Domain-agnostic dashboard sidebar — takes its nav sections and subtitle as props so it can be
+// reused for both the tenant admin dashboard and Konsol Platform (§2.2/§2.12), with no internal
+// knowledge of either domain's routes or auth store.
+export function AppSidebar({
+  groups,
+  subtitle = "Admin POS",
+}: {
+  groups: NavGroup[];
+  subtitle?: string;
+}) {
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-surface">
       <div className="flex items-center gap-2.5 border-b border-border px-4 py-4">
         <img src="/elkasir-logo.png" alt={appBrand} className="h-9 w-9 shrink-0" />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold leading-tight text-text">{appBrand}</span>
-          <span className="truncate text-[11px] text-muted">Admin POS</span>
+          <span className="truncate text-[11px] text-muted">{subtitle}</span>
         </div>
       </div>
 
@@ -76,7 +42,7 @@ export function AppSidebar() {
                 <li key={item.title}>
                   <NavLink
                     to={item.to}
-                    end={item.to === ROUTE_PATHS.dashboard}
+                    end={item.end}
                     className={({ isActive }: { isActive: boolean }) =>
                       cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",

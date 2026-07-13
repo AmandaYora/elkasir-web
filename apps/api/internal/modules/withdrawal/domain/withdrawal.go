@@ -10,15 +10,20 @@ import (
 
 // Withdrawal is the withdrawal read model (store balance disbursement request).
 type Withdrawal struct {
-	ID          string
-	Amount      int64
-	Bank        string
-	Account     string
-	Holder      string
-	Status      string
-	Reference   string
-	RequestedBy string
-	CreatedAt   time.Time
+	ID             string
+	StoreID        string
+	Amount         int64
+	Bank           string
+	Account        string
+	Holder         string
+	Status         string
+	Reference      string
+	RequestedBy    string
+	ProcessedBy    string
+	ClaimedAt      *time.Time
+	ProcessedAt    *time.Time
+	RejectedReason string
+	CreatedAt      time.Time
 }
 
 // Input is the withdrawal request payload (decoded from JSON).

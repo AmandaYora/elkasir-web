@@ -10,19 +10,18 @@ import type {
 
 // Public (no-auth) order service for the customer self-order page.
 // Every call passes { auth: false } so no Bearer token is attached.
+// {storeSlug} wajib: kode meja cuma unik per-toko (lihat migration 000016), jadi tenant
+// harus di-resolve dari slug toko, bukan cuma kode meja.
+const orderPath = (storeSlug: string, tableCode: string) =>
+  `${endpoints.publicOrder}/${encodeURIComponent(storeSlug)}/${encodeURIComponent(tableCode)}`;
+
 export const publicOrderService = {
-  menu: (tableCode: string) =>
-    api.get<PublicMenu>(`${endpoints.publicOrder}/${encodeURIComponent(tableCode)}`, {
-      auth: false,
-    }),
-  place: (tableCode: string, body: PlaceOrderInput) =>
-    api.post<PlaceResult>(`${endpoints.publicOrder}/${encodeURIComponent(tableCode)}`, body, {
-      auth: false,
-    }),
-  quote: (tableCode: string, body: PlaceOrderInput) =>
-    api.post<QuoteResult>(`${endpoints.publicOrder}/${encodeURIComponent(tableCode)}/quote`, body, {
-      auth: false,
-    }),
+  menu: (storeSlug: string, tableCode: string) =>
+    api.get<PublicMenu>(orderPath(storeSlug, tableCode), { auth: false }),
+  place: (storeSlug: string, tableCode: string, body: PlaceOrderInput) =>
+    api.post<PlaceResult>(orderPath(storeSlug, tableCode), body, { auth: false }),
+  quote: (storeSlug: string, tableCode: string, body: PlaceOrderInput) =>
+    api.post<QuoteResult>(`${orderPath(storeSlug, tableCode)}/quote`, body, { auth: false }),
   status: (selfOrderId: string) =>
     api.get<PublicSelfOrderStatus>(`${endpoints.publicOrder}/status/${selfOrderId}`, {
       auth: false,

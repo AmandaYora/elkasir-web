@@ -40,12 +40,13 @@ func (q *Queries) GetSettingsByStore(ctx context.Context, storeID string) (Setti
 
 const getStoreProfile = `-- name: GetStoreProfile :one
 
-SELECT id, name, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1
+SELECT id, name, slug, address, phone, logo_url FROM stores WHERE id = ? LIMIT 1
 `
 
 type GetStoreProfileRow struct {
 	ID      string         `json:"id"`
 	Name    string         `json:"name"`
+	Slug    string         `json:"slug"`
 	Address sql.NullString `json:"address"`
 	Phone   sql.NullString `json:"phone"`
 	LogoUrl sql.NullString `json:"logoUrl"`
@@ -54,12 +55,16 @@ type GetStoreProfileRow struct {
 // stores adalah shared kernel; modul settings juga mengelola kolom profil (name/address/
 // phone/logo_url) sebagai bagian dari "menu Pengaturan" — lihat knowledge/MODULE_MAP.md.
 // Kolom lain di stores (type/timezone/currency) TIDAK disentuh dari sini.
+// slug dibaca (read-only) di sini untuk ditampilkan admin (URL self-order publik
+// /order/<slug>/<kodeMeja>) — kepemilikan TULIS-nya tetap di modul `platform` (lihat
+// migration 000016 & knowledge/MODULE_MAP.md); settings tidak pernah menulis slug.
 func (q *Queries) GetStoreProfile(ctx context.Context, id string) (GetStoreProfileRow, error) {
 	row := q.db.QueryRowContext(ctx, getStoreProfile, id)
 	var i GetStoreProfileRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Slug,
 		&i.Address,
 		&i.Phone,
 		&i.LogoUrl,

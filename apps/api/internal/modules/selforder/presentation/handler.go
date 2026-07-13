@@ -32,19 +32,22 @@ func NewHandler(svc *application.Service, auth authcontract.Authenticator) *Hand
 
 func (h *Handler) Routes(r chi.Router) {
 	// Publik (tanpa auth) — pelanggan self-order. Rate-limit dasar per-IP.
+	// {storeSlug} WAJIB: kode meja cuma unik per-toko (lihat migration 000016), jadi tenant
+	// harus di-resolve dari slug, bukan cuma tableCode — lihat tableclient.Client.FindByCode.
 	r.Route("/public/order", func(r chi.Router) {
 		r.Use(httpserver.RateLimit(60))
-		r.Get("/{tableCode}", h.menu)
-		r.Post("/{tableCode}", h.place)
-		r.Post("/{tableCode}/quote", h.quote)
+		r.Get("/{storeSlug}/{tableCode}", h.menu)
+		r.Post("/{storeSlug}/{tableCode}", h.place)
+		r.Post("/{storeSlug}/{tableCode}/quote", h.quote)
 		r.Get("/status/{selfOrderId}", h.status)
 		r.Get("/events/{selfOrderId}", h.events)               // SSE: status pembayaran real-time (pengganti polling)
 		r.Post("/{selfOrderId}/simulate-paid", h.simulatePaid) // DEV (gateway nonaktif)
 	})
 
-	// Webhook pembayaran (provider-agnostic) — verifikasi signature di module payment sesuai
-	// provider aktif (Tripay/Midtrans). Daftarkan URL ini di dashboard provider.
-	r.Post("/webhooks/payment", h.webhook)
+	// Webhook pembayaran TIDAK didaftarkan di sini — Tripay/Midtrans hanya menyediakan SATU
+	// callback URL per akun merchant, kini dibagi dengan module subscription. Dispatcher-nya
+	// didaftarkan di composition root (internal/app/webhook.go), yang memanggil
+	// Service.ApplyWebhookEvent setelah verifikasi+parse+idempotensi.
 
 	// Staf/admin — pesanan masuk & tebus barcode.
 	r.Route("/self-orders", func(r chi.Router) {
@@ -68,7 +71,7 @@ func (h *Handler) Routes(r chi.Router) {
 }
 
 func (h *Handler) menu(w http.ResponseWriter, r *http.Request) {
-	dto, err := h.svc.Menu(r.Context(), chi.URLParam(r, "tableCode"))
+	dto, err := h.svc.Menu(r.Context(), chi.URLParam(r, "storeSlug"), chi.URLParam(r, "tableCode"))
 	if err != nil {
 		httpx.Error(w, err)
 		return
@@ -82,7 +85,7 @@ func (h *Handler) place(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err)
 		return
 	}
-	res, err := h.svc.PlaceOrder(r.Context(), chi.URLParam(r, "tableCode"), in)
+	res, err := h.svc.PlaceOrder(r.Context(), chi.URLParam(r, "storeSlug"), chi.URLParam(r, "tableCode"), in)
 	if err != nil {
 		httpx.Error(w, err)
 		return
@@ -96,7 +99,7 @@ func (h *Handler) quote(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err)
 		return
 	}
-	dto, err := h.svc.Quote(r.Context(), chi.URLParam(r, "tableCode"), in)
+	dto, err := h.svc.Quote(r.Context(), chi.URLParam(r, "storeSlug"), chi.URLParam(r, "tableCode"), in)
 	if err != nil {
 		httpx.Error(w, err)
 		return
@@ -200,20 +203,6 @@ func (h *Handler) simulatePaid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, map[string]string{"status": "paid"})
-}
-
-func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
-	// Header & body diteruskan apa adanya; verifikasi (skema provider) ada di module payment.
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err != nil {
-		httpx.Error(w, httpx.BadRequest("Body webhook tidak terbaca."))
-		return
-	}
-	if err := h.svc.HandleWebhook(r.Context(), r.Header, body); err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.OK(w, map[string]string{"received": "ok"})
 }
 
 func (h *Handler) listIncoming(w http.ResponseWriter, r *http.Request) {

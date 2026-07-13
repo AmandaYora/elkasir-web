@@ -47,3 +47,27 @@ body {
     animation: none;
   }
 }
+
+/* ── Self-order screen entrances ───────────────────────────────────────────────
+   Each step (menu → review → pay) and the payment ticket reuse the same soft-rise
+   vocabulary as the auth screen — one consistent "new content has arrived" cue
+   instead of a different effect per surface. Overlay-fade is a separate, snappier
+   cue reserved for the full-screen barcode enlarge mode (a different kind of
+   moment: the screen itself, not new content). */
+@keyframes overlay-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.overlay-fade {
+  animation: overlay-fade 160ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade {
+    animation: none;
+  }
+}

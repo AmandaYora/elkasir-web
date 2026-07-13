@@ -182,6 +182,90 @@ func (ns NullDiningTablesStatus) Value() (driver.Value, error) {
 	return string(ns.DiningTablesStatus), nil
 }
 
+type PaymentClientsKind string
+
+const (
+	PaymentClientsKindInternal PaymentClientsKind = "internal"
+	PaymentClientsKindExternal PaymentClientsKind = "external"
+)
+
+func (e *PaymentClientsKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PaymentClientsKind(s)
+	case string:
+		*e = PaymentClientsKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PaymentClientsKind: %T", src)
+	}
+	return nil
+}
+
+type NullPaymentClientsKind struct {
+	PaymentClientsKind PaymentClientsKind `json:"paymentClientsKind"`
+	Valid              bool               `json:"valid"` // Valid is true if PaymentClientsKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentClientsKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PaymentClientsKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PaymentClientsKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentClientsKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PaymentClientsKind), nil
+}
+
+type PaymentClientsStatus string
+
+const (
+	PaymentClientsStatusActive   PaymentClientsStatus = "active"
+	PaymentClientsStatusInactive PaymentClientsStatus = "inactive"
+)
+
+func (e *PaymentClientsStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PaymentClientsStatus(s)
+	case string:
+		*e = PaymentClientsStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PaymentClientsStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPaymentClientsStatus struct {
+	PaymentClientsStatus PaymentClientsStatus `json:"paymentClientsStatus"`
+	Valid                bool                 `json:"valid"` // Valid is true if PaymentClientsStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentClientsStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PaymentClientsStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PaymentClientsStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentClientsStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PaymentClientsStatus), nil
+}
+
 type PaymentsMethod string
 
 const (
@@ -310,6 +394,48 @@ func (ns NullPaymentsStatus) Value() (driver.Value, error) {
 	return string(ns.PaymentsStatus), nil
 }
 
+type PlatformUsersStatus string
+
+const (
+	PlatformUsersStatusActive   PlatformUsersStatus = "active"
+	PlatformUsersStatusInactive PlatformUsersStatus = "inactive"
+)
+
+func (e *PlatformUsersStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlatformUsersStatus(s)
+	case string:
+		*e = PlatformUsersStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlatformUsersStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPlatformUsersStatus struct {
+	PlatformUsersStatus PlatformUsersStatus `json:"platformUsersStatus"`
+	Valid               bool                `json:"valid"` // Valid is true if PlatformUsersStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatformUsersStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlatformUsersStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlatformUsersStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatformUsersStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlatformUsersStatus), nil
+}
+
 type ProductsStatus string
 
 const (
@@ -355,8 +481,9 @@ func (ns NullProductsStatus) Value() (driver.Value, error) {
 type RefreshTokensActor string
 
 const (
-	RefreshTokensActorAdmin RefreshTokensActor = "admin"
-	RefreshTokensActorStaff RefreshTokensActor = "staff"
+	RefreshTokensActorAdmin    RefreshTokensActor = "admin"
+	RefreshTokensActorStaff    RefreshTokensActor = "staff"
+	RefreshTokensActorPlatform RefreshTokensActor = "platform"
 )
 
 func (e *RefreshTokensActor) Scan(src interface{}) error {
@@ -650,6 +777,179 @@ func (ns NullStaffStatus) Value() (driver.Value, error) {
 	return string(ns.StaffStatus), nil
 }
 
+type StoreSubscriptionsStatus string
+
+const (
+	StoreSubscriptionsStatusTrial    StoreSubscriptionsStatus = "trial"
+	StoreSubscriptionsStatusActive   StoreSubscriptionsStatus = "active"
+	StoreSubscriptionsStatusPastDue  StoreSubscriptionsStatus = "past_due"
+	StoreSubscriptionsStatusExpired  StoreSubscriptionsStatus = "expired"
+	StoreSubscriptionsStatusCanceled StoreSubscriptionsStatus = "canceled"
+)
+
+func (e *StoreSubscriptionsStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StoreSubscriptionsStatus(s)
+	case string:
+		*e = StoreSubscriptionsStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StoreSubscriptionsStatus: %T", src)
+	}
+	return nil
+}
+
+type NullStoreSubscriptionsStatus struct {
+	StoreSubscriptionsStatus StoreSubscriptionsStatus `json:"storeSubscriptionsStatus"`
+	Valid                    bool                     `json:"valid"` // Valid is true if StoreSubscriptionsStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStoreSubscriptionsStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.StoreSubscriptionsStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StoreSubscriptionsStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStoreSubscriptionsStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StoreSubscriptionsStatus), nil
+}
+
+type StoresStatus string
+
+const (
+	StoresStatusActive    StoresStatus = "active"
+	StoresStatusSuspended StoresStatus = "suspended"
+)
+
+func (e *StoresStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StoresStatus(s)
+	case string:
+		*e = StoresStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StoresStatus: %T", src)
+	}
+	return nil
+}
+
+type NullStoresStatus struct {
+	StoresStatus StoresStatus `json:"storesStatus"`
+	Valid        bool         `json:"valid"` // Valid is true if StoresStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStoresStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.StoresStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StoresStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStoresStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StoresStatus), nil
+}
+
+type SubscriptionInvoicesProvider string
+
+const (
+	SubscriptionInvoicesProviderTripay   SubscriptionInvoicesProvider = "tripay"
+	SubscriptionInvoicesProviderMidtrans SubscriptionInvoicesProvider = "midtrans"
+)
+
+func (e *SubscriptionInvoicesProvider) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SubscriptionInvoicesProvider(s)
+	case string:
+		*e = SubscriptionInvoicesProvider(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SubscriptionInvoicesProvider: %T", src)
+	}
+	return nil
+}
+
+type NullSubscriptionInvoicesProvider struct {
+	SubscriptionInvoicesProvider SubscriptionInvoicesProvider `json:"subscriptionInvoicesProvider"`
+	Valid                        bool                         `json:"valid"` // Valid is true if SubscriptionInvoicesProvider is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSubscriptionInvoicesProvider) Scan(value interface{}) error {
+	if value == nil {
+		ns.SubscriptionInvoicesProvider, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SubscriptionInvoicesProvider.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSubscriptionInvoicesProvider) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SubscriptionInvoicesProvider), nil
+}
+
+type SubscriptionInvoicesStatus string
+
+const (
+	SubscriptionInvoicesStatusPending SubscriptionInvoicesStatus = "pending"
+	SubscriptionInvoicesStatusPaid    SubscriptionInvoicesStatus = "paid"
+	SubscriptionInvoicesStatusExpired SubscriptionInvoicesStatus = "expired"
+	SubscriptionInvoicesStatusFailed  SubscriptionInvoicesStatus = "failed"
+)
+
+func (e *SubscriptionInvoicesStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SubscriptionInvoicesStatus(s)
+	case string:
+		*e = SubscriptionInvoicesStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SubscriptionInvoicesStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSubscriptionInvoicesStatus struct {
+	SubscriptionInvoicesStatus SubscriptionInvoicesStatus `json:"subscriptionInvoicesStatus"`
+	Valid                      bool                       `json:"valid"` // Valid is true if SubscriptionInvoicesStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSubscriptionInvoicesStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SubscriptionInvoicesStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SubscriptionInvoicesStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSubscriptionInvoicesStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SubscriptionInvoicesStatus), nil
+}
+
 type TransactionsOrderType string
 
 const (
@@ -925,6 +1225,49 @@ type Payment struct {
 	Provider    PaymentsProvider `json:"provider"`
 }
 
+type PaymentChargeApp struct {
+	OrderRef    string         `json:"orderRef"`
+	AppID       string         `json:"appId"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	ProviderRef sql.NullString `json:"providerRef"`
+}
+
+type PaymentClient struct {
+	ID          string               `json:"id"`
+	AppID       string               `json:"appId"`
+	Name        string               `json:"name"`
+	SecretHash  sql.NullString       `json:"secretHash"`
+	Kind        PaymentClientsKind   `json:"kind"`
+	CallbackUrl sql.NullString       `json:"callbackUrl"`
+	Status      PaymentClientsStatus `json:"status"`
+	CreatedAt   time.Time            `json:"createdAt"`
+	UpdatedAt   time.Time            `json:"updatedAt"`
+	SecretEnc   sql.NullString       `json:"secretEnc"`
+}
+
+type PaymentGatewayConfig struct {
+	ID                    string         `json:"id"`
+	Provider              string         `json:"provider"`
+	Sandbox               bool           `json:"sandbox"`
+	TripayApiKeyEnc       sql.NullString `json:"tripayApiKeyEnc"`
+	TripayPrivateKeyEnc   sql.NullString `json:"tripayPrivateKeyEnc"`
+	TripayMerchantCodeEnc sql.NullString `json:"tripayMerchantCodeEnc"`
+	TripayMethod          string         `json:"tripayMethod"`
+	MidtransServerKeyEnc  sql.NullString `json:"midtransServerKeyEnc"`
+	CreatedAt             time.Time      `json:"createdAt"`
+	UpdatedAt             time.Time      `json:"updatedAt"`
+}
+
+type PlatformUser struct {
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	Email        string              `json:"email"`
+	PasswordHash string              `json:"passwordHash"`
+	Status       PlatformUsersStatus `json:"status"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
+}
+
 type Product struct {
 	ID         string         `json:"id"`
 	StoreID    string         `json:"storeId"`
@@ -951,12 +1294,12 @@ type ProductCategory struct {
 
 type RefreshToken struct {
 	ID        string             `json:"id"`
-	Actor     RefreshTokensActor `json:"actor"`
 	SubjectID string             `json:"subjectId"`
 	TokenHash string             `json:"tokenHash"`
 	ExpiresAt time.Time          `json:"expiresAt"`
 	RevokedAt sql.NullTime       `json:"revokedAt"`
 	CreatedAt time.Time          `json:"createdAt"`
+	Actor     RefreshTokensActor `json:"actor"`
 }
 
 type SelfOrder struct {
@@ -1056,6 +1399,45 @@ type Store struct {
 	CreatedAt time.Time      `json:"createdAt"`
 	UpdatedAt time.Time      `json:"updatedAt"`
 	LogoUrl   sql.NullString `json:"logoUrl"`
+	Status    StoresStatus   `json:"status"`
+	Slug      string         `json:"slug"`
+}
+
+type StoreSubscription struct {
+	ID                 string                   `json:"id"`
+	StoreID            string                   `json:"storeId"`
+	PlanID             string                   `json:"planId"`
+	Status             StoreSubscriptionsStatus `json:"status"`
+	CurrentPeriodStart sql.NullTime             `json:"currentPeriodStart"`
+	CurrentPeriodEnd   sql.NullTime             `json:"currentPeriodEnd"`
+	CreatedAt          time.Time                `json:"createdAt"`
+	UpdatedAt          time.Time                `json:"updatedAt"`
+}
+
+type SubscriptionInvoice struct {
+	ID          string                       `json:"id"`
+	StoreID     string                       `json:"storeId"`
+	PlanID      string                       `json:"planId"`
+	Amount      int64                        `json:"amount"`
+	Status      SubscriptionInvoicesStatus   `json:"status"`
+	Provider    SubscriptionInvoicesProvider `json:"provider"`
+	ProviderRef sql.NullString               `json:"providerRef"`
+	PeriodStart sql.NullTime                 `json:"periodStart"`
+	PeriodEnd   sql.NullTime                 `json:"periodEnd"`
+	CreatedAt   time.Time                    `json:"createdAt"`
+	UpdatedAt   time.Time                    `json:"updatedAt"`
+}
+
+type SubscriptionPlan struct {
+	ID          string    `json:"id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Price       int64     `json:"price"`
+	PeriodDays  int32     `json:"periodDays"`
+	IsActive    bool      `json:"isActive"`
+	RenewalOnly bool      `json:"renewalOnly"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type Transaction struct {
@@ -1108,15 +1490,19 @@ type WebhookEvent struct {
 }
 
 type Withdrawal struct {
-	ID          string            `json:"id"`
-	StoreID     string            `json:"storeId"`
-	Amount      int64             `json:"amount"`
-	Bank        string            `json:"bank"`
-	Account     string            `json:"account"`
-	Holder      string            `json:"holder"`
-	Status      WithdrawalsStatus `json:"status"`
-	Reference   sql.NullString    `json:"reference"`
-	RequestedBy sql.NullString    `json:"requestedBy"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
+	ID             string            `json:"id"`
+	StoreID        string            `json:"storeId"`
+	Amount         int64             `json:"amount"`
+	Bank           string            `json:"bank"`
+	Account        string            `json:"account"`
+	Holder         string            `json:"holder"`
+	Status         WithdrawalsStatus `json:"status"`
+	Reference      sql.NullString    `json:"reference"`
+	RequestedBy    sql.NullString    `json:"requestedBy"`
+	CreatedAt      time.Time         `json:"createdAt"`
+	UpdatedAt      time.Time         `json:"updatedAt"`
+	ProcessedBy    sql.NullString    `json:"processedBy"`
+	ClaimedAt      sql.NullTime      `json:"claimedAt"`
+	ProcessedAt    sql.NullTime      `json:"processedAt"`
+	RejectedReason sql.NullString    `json:"rejectedReason"`
 }

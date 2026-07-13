@@ -1,4 +1,4 @@
-// Package infrastructure implements paymentclient.Client di atas SATU gateway QRIS aktif
+// Package infrastructure implements paymentclient.Client di atas SATU gateway QRIS/VA aktif
 // (Tripay / Midtrans) yang dipilih dari konfigurasi, atau mode simulasi bila tak ada yang
 // aktif. Bagian yang TIDAK bergantung provider (pencatatan tabel payments + idempotensi
 // webhook_events) hidup di client.go; detail tiap provider hidup di tripay.go / midtrans.go.
@@ -13,26 +13,35 @@ import (
 	"github.com/elkasir/api/internal/platform/config"
 )
 
-// qrResult adalah hasil charge yang sudah dinormalisasi lintas provider.
+// chargeResult adalah hasil charge yang sudah dinormalisasi lintas provider/kanal.
 //
 //	Ref        = referensi transaksi milik provider (disimpan sebagai provider_ref)
-//	QRString   = payload QRIS mentah (bila provider menyediakannya)
-//	QRImageURL = URL gambar QR siap-tampil dari provider
-type qrResult struct {
+//	QRString   = payload QRIS mentah (channel QRIS, bila provider menyediakannya)
+//	QRImageURL = URL gambar QR siap-tampil (channel QRIS)
+//	VANumber   = nomor rekening virtual (channel VA)
+//	VABankCode = kode bank VA yang dipakai (channel VA)
+type chargeResult struct {
 	Ref        string
 	QRString   string
 	QRImageURL string
+	VANumber   string
+	VABankCode string
 }
 
-// gateway adalah kontrak internal untuk satu penyedia QRIS. Semua perbedaan provider
+// gateway adalah kontrak internal untuk satu penyedia pembayaran. Semua perbedaan provider
 // (endpoint, header auth, skema signature, format payload/callback) disembunyikan di sini
 // sehingga apiClient tetap provider-agnostic.
 type gateway interface {
-	name() string // nilai kolom payments.provider / webhook_events.provider
+	name() string
 	enabled() bool
-	createCharge(ctx context.Context, orderRef string, amount int64) (qrResult, error)
+	createCharge(ctx context.Context, orderRef string, amount int64, channel paymentclient.Channel, opts paymentclient.ChannelOptions) (chargeResult, error)
 	// quoteFee mengembalikan biaya gateway QRIS untuk `amount` (rupiah) yang akan ditagih.
 	quoteFee(ctx context.Context, amount int64) (int64, error)
+	// listChannels melaporkan kanal yang aktif di akun gateway saat ini (§9.1.8) — live dari
+	// provider, bukan daftar statis dalam kode.
+	listChannels(ctx context.Context) ([]paymentclient.ChannelInfo, error)
+	// checkStatus adalah pull-based status check, independen dari webhook (§9.1.8).
+	checkStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error)
 	verifyWebhook(header http.Header, body []byte) bool
 	parseWebhook(body []byte) (paymentclient.WebhookEvent, error)
 }

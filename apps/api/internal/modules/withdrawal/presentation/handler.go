@@ -27,6 +27,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(authcontract.RequireActor(authcontract.ActorAdmin))
 
 		r.Get("/", h.list)
+		r.Get("/balance", h.balance)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authcontract.RequireRole("owner"))
@@ -45,6 +46,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, httpx.List(items, total, page))
+}
+
+func (h *Handler) balance(w http.ResponseWriter, r *http.Request) {
+	storeID := authcontract.MustPrincipal(r.Context()).StoreID
+	balance, err := h.svc.Balance(r.Context(), storeID)
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, struct {
+		AvailableBalance int64 `json:"availableBalance"`
+	}{AvailableBalance: balance})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {

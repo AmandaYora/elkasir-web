@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, CheckCircle2, Clock } from "lucide-react";
+import { Plus, CheckCircle2, Clock, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -29,8 +29,10 @@ import type { Withdrawal, WithdrawalInput } from "@/modules/withdrawals/types/wi
 
 export default function WithdrawalsPage() {
   const withdrawalsQuery = useAsync(() => withdrawalsService.list({ limit: 200 }), []);
+  const balanceQuery = useAsync(() => withdrawalsService.getBalance(), []);
 
   const items = withdrawalsQuery.data?.data ?? [];
+  const availableBalance = balanceQuery.data?.availableBalance ?? 0;
 
   const [detail, setDetail] = useState<Withdrawal | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -44,7 +46,10 @@ export default function WithdrawalsPage() {
     [items],
   );
 
-  const refresh = () => withdrawalsQuery.refetch();
+  const refresh = () => {
+    withdrawalsQuery.refetch();
+    balanceQuery.refetch();
+  };
 
   return (
     <div className="space-y-4 p-4 md:p-6">
@@ -58,7 +63,14 @@ export default function WithdrawalsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatCard
+          label="Saldo Dapat Dicairkan"
+          value={formatIDR(availableBalance)}
+          hint="tersedia untuk ditarik"
+          icon={Wallet}
+          tone="text-primary"
+        />
         <StatCard
           label="Pengajuan Tertunda"
           value={String(pending)}
@@ -74,6 +86,8 @@ export default function WithdrawalsPage() {
           tone="text-success"
         />
       </div>
+
+      <p className="text-xs text-muted">Proses pencairan memakan waktu hingga 2 hari kerja.</p>
 
       <Card className="overflow-hidden">
         {withdrawalsQuery.loading ? (
@@ -151,6 +165,12 @@ export default function WithdrawalsPage() {
                 </div>
               ))}
             </div>
+            {detail.status === "failed" && detail.rejectedReason && (
+              <div className="rounded-lg border border-danger/30 bg-danger-soft/60 px-4 py-3 text-sm text-danger">
+                <span className="font-medium">Alasan penolakan: </span>
+                {detail.rejectedReason}
+              </div>
+            )}
           </div>
         )}
       </Drawer>
@@ -164,6 +184,7 @@ export default function WithdrawalsPage() {
       >
         <WithdrawalForm
           key={createOpen ? "open" : "closed"}
+          availableBalance={availableBalance}
           onDone={() => {
             setCreateOpen(false);
             refresh();
@@ -201,7 +222,13 @@ function StatCard({
   );
 }
 
-function WithdrawalForm({ onDone }: { onDone: () => void }) {
+function WithdrawalForm({
+  availableBalance,
+  onDone,
+}: {
+  availableBalance: number;
+  onDone: () => void;
+}) {
   const [form, setForm] = useState<WithdrawalInput>({
     amount: 0,
     bank: "",
@@ -219,6 +246,10 @@ function WithdrawalForm({ onDone }: { onDone: () => void }) {
     const parsed = withdrawalSchema.safeParse(form);
     if (!parsed.success) {
       setErrors(zodFieldErrors(parsed.error));
+      return;
+    }
+    if (parsed.data.amount > availableBalance) {
+      setErrors((e) => ({ ...e, amount: "Jumlah melebihi saldo yang dapat dicairkan." }));
       return;
     }
     setBusy(true);
@@ -243,6 +274,7 @@ function WithdrawalForm({ onDone }: { onDone: () => void }) {
           onChange={(n) => set("amount", n)}
           aria-invalid={!!errors.amount}
         />
+        <p className="text-xs text-muted">Saldo dapat dicairkan: {formatIDR(availableBalance)}</p>
         <FieldError msg={errors.amount} />
       </div>
       <div className="grid gap-2">

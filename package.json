@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev:web": "npm run dev -w @elkasir/web",
-    "dev:api": "cd apps/api && air",
+    "dev:api": "node scripts/dev-api.mjs",
     "build:web": "npm run build -w @elkasir/web",
     "build:api": "cd apps/api && go build -o bin/api ./cmd/api",
     "build": "npm run build:web && node scripts/embed-web.mjs && npm run build:api",

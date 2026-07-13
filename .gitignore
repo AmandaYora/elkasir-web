@@ -31,6 +31,10 @@ vendor/
 apps/api/.env
 apps/web/.env
 
+# Local-only ops docs with real production identifiers/infra details — this repo is public;
+# *.local.md is the unredacted counterpart of a committed, sanitized doc of the same base name.
+*.local.md
+
 # Editor / OS
 .DS_Store
 Thumbs.db

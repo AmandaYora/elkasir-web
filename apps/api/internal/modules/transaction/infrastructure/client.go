@@ -66,6 +66,29 @@ func (a *salesAdapter) RecordSale(ctx context.Context, in salesclient.RecordSale
 	return txID, nil
 }
 
+// PlatformSelfOrderQrisRevenue implements salesclient.Client — dipakai module `platform` saja.
+func (a *salesAdapter) PlatformSelfOrderQrisRevenue(ctx context.Context) (int64, error) {
+	return a.uow.Q(ctx).SumSelfOrderQrisRevenue(ctx)
+}
+
+// SelfOrderQrisRevenueForStore implements salesclient.Client.
+func (a *salesAdapter) SelfOrderQrisRevenueForStore(ctx context.Context, storeID string) (int64, error) {
+	return a.uow.Q(ctx).SumSelfOrderQrisRevenueByStore(ctx, storeID)
+}
+
+// PlatformSelfOrderQrisRevenueByTenant implements salesclient.Client.
+func (a *salesAdapter) PlatformSelfOrderQrisRevenueByTenant(ctx context.Context) ([]salesclient.TenantAmount, error) {
+	rows, err := a.uow.Q(ctx).SumSelfOrderQrisRevenueGroupedByStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]salesclient.TenantAmount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, salesclient.TenantAmount{StoreID: r.StoreID, Amount: r.Total})
+	}
+	return out, nil
+}
+
 func (a *salesAdapter) VoidSale(ctx context.Context, in salesclient.VoidSaleInput) (bool, error) {
 	n, err := a.uow.Q(ctx).VoidTransaction(ctx, sqlcgen.VoidTransactionParams{
 		VoidedAt:   sql.NullTime{Time: time.Now().UTC(), Valid: true},

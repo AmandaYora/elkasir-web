@@ -4,6 +4,7 @@
 import { create } from "zustand";
 import { api, setOnUnauthorized, tokenStore } from "@/shared/services/http-client";
 import { endpoints } from "@/shared/services/api-endpoints";
+import { ApiError } from "@/shared/types/api";
 
 export interface SessionUser {
   id: string;
@@ -80,10 +81,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       tokenStore.set(res.accessToken, res.refreshToken);
       set({ user: toSession(res.user) });
       return { ok: true };
-    } catch {
+    } catch (e) {
+      // Surface the backend's actual message — it already distinguishes wrong credentials
+      // from an inactive account, a suspended tenant (§2.13), or an inactive package (§2.15),
+      // and a generic "wrong password" fallback here would silently swallow all of those.
       return {
         ok: false,
-        error: "Email atau password salah. Coba lagi.",
+        error: e instanceof ApiError ? e.message : "Email atau password salah. Coba lagi.",
       };
     }
   },

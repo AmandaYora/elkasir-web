@@ -50,10 +50,27 @@ index for query performance, but **no `FOREIGN KEY` constraint**.
   approver, transaction_item→product, cash_movement→shift/creator/approver, withdrawal→admin user,
   self_order→table, self_order_item→product, payment→self_order, and the circular
   transaction↔self_order link.
+  - `payments.self_order_id` was dropped as a cross-module FK back when `payment` still owned the
+    `payments` table. Ownership of `payments` has since moved to `selforder` (see §4) — the column
+    is now an **intra-module** reference, kept FK-less only because no migration has re-added it,
+    not because it needs to be.
 
 When one module needs another's data it goes through a **contract client** (e.g. `productclient`,
-`shiftclient`, `salesclient`, `tableclient`, `paymentclient`) — never a direct SQL join across the
-boundary.
+`shiftclient`, `salesclient`, `tableclient`, `paymentclient`, `withdrawalclient`,
+`platformuserclient`) — never a direct SQL join across the boundary.
+
+**Exception:** joining to the shared-kernel `stores` table (e.g. `table`'s
+`FindTableByStoreSlugAndCode`, joining `dining_tables` → `stores.slug`) is NOT a cross-module
+join — `stores` isn't owned by any business module, and every single query in this app already
+depends on it via `store_id`. This is how the self-order QR entry point resolves the tenant from
+`slug` before it even knows a `store_id` — see the audit note below.
+
+**Multi-tenancy audit fixes (migration `000016_platform`):** two lookups resolved a tenant from a
+value that was only unique **per-store**, with no tenant identifier available in the request —
+`dining_tables.code` (self-order QR — fixed via the `stores.slug` join above) and
+`staff.username` (POS login — fixed by making it globally unique instead, since the shared mobile
+APK sends no tenant context and adding one would break `elkasir_mobile`). See
+`knowledge/MODULE_MAP.md` §"Multi-tenancy audit fixes" for the full writeup.
 
 ---
 
@@ -63,27 +80,39 @@ Each table is owned by exactly one module. Cross-module references (primitive ID
 
 | Table                | Owning module   | Notes / cross-module primitive IDs |
 |----------------------|-----------------|------------------------------------|
-| `stores`             | shared kernel   | Tenant root. Referenced by every module via `store_id` FK. Profile columns (`name`/`address`/`phone`/`logo_url`) are read/written by the `settings` module (shared-kernel exception — see `MODULE_MAP.md`). |
+| `stores`             | shared kernel   | Tenant root. Referenced by every module via `store_id` FK. Profile columns (`name`/`address`/`phone`/`logo_url`) are read/written by `settings`; lifecycle columns (`slug`, `status`) are read/written by `platform` — TWO shared-kernel exceptions, see `MODULE_MAP.md`. |
 | `settings`           | shared kernel   | One row per store; control policy + feature flags. |
-| `admin_users`        | `adminuser` / `auth` | Web back-office users. |
-| `staff`              | `staff` / `auth` | POS cashiers/supervisors. |
+| `platform_users`     | `platformuser` / `auth` | Superadmin identity — NOT scoped by `store_id` at all (the only such identity table). `platformuser` owns CRUD (create/deactivate/reset password, no hard-delete); `auth` separately keeps its own narrow login-lookup queries against the same table, same split already used for `admin_users`/`staff`. |
+| `admin_users`        | `adminuser` / `auth` | Web back-office users. `username` is **globally unique** (migration 000006). |
+| `staff`              | `staff` / `auth` | POS cashiers/supervisors. `username` is **globally unique** (migration 000016 — was `(store_id, username)`; the login endpoint carries no tenant context, see §3 audit note below). |
 | `refresh_tokens`     | `auth`          | Refresh-token rotation for both actors. |
 | `idempotency_keys`   | `auth`/`transaction` (platform) | Idempotency for transaction & checkout creation. |
 | `webhook_events`     | `payment`       | Webhook dedupe (provider + event id). |
 | `product_categories` | `category`      | — |
 | `products`           | `product`       | `category_id` (intra-module FK to `product_categories`). |
-| `dining_tables`      | `table`         | `code` encodes the self-order QR. |
+| `dining_tables`      | `table`         | `code` encodes the self-order QR — unique only per-store; the public self-order entry point resolves the tenant from `stores.slug` FIRST (join), never from `code` alone (migration 000016 — see audit note below). |
 | `shifts`             | `shift`         | `staff_id`, `close_approved_by` → staff (primitive IDs). |
 | `transactions`       | `transaction`   | `shift_id`, `table_id`, `self_order_id`, `cashier_id`, `discount_approved_by` (primitive IDs). |
 | `transaction_items`  | `transaction`   | `transaction_id` (intra-module FK); `product_id` (primitive ID). |
 | `cash_movements`     | `cashmovement`  | `shift_id`, `created_by`, `approved_by` (primitive IDs). |
-| `withdrawals`        | `withdrawal`    | `requested_by` → admin user (primitive ID). |
+| `withdrawals`        | `withdrawal`    | `requested_by` → admin user (primitive ID). `processed_by` → platform user (primitive ID, migration 000017); `claimed_at`/`processed_at`/`rejected_reason` record the claim→complete audit trail (§2.7/§2.8). |
 | `self_orders`        | `selforder`     | `table_id`, `transaction_id` (primitive IDs). |
 | `self_order_items`   | `selforder`     | `self_order_id` (intra-module FK); `product_id` (primitive ID). |
-| `payments`           | `payment`       | `self_order_id` (primitive ID). |
+| `payments`           | `selforder`     | `self_order_id` (now intra-module — see §3). Moved from `payment` so a customer's self-order payment ledger never shares a table with tenant billing (`subscription_invoices`). |
+| `subscription_plans`     | `subscription` | Reference/catalog data (seeded), not tenant data. |
+| `store_subscriptions`    | `subscription` | `plan_id` (intra-module FK to `subscription_plans`). One row per store. |
+| `subscription_invoices`  | `subscription` | `plan_id` (intra-module FK). This module's OWN gateway ledger — never shares a row with `payments` (selforder's ledger), even though both go through the same `payment` module gateway. |
+| `payment_clients`        | `payment`      | App registry (PLAN.md §9.1.3, Part 2) — `app_id`, `secret_hash` (bcrypt, NULL for `kind='internal'`, used for incoming `POST /auth/app/token` auth), `secret_enc` (Part 3, §10.1.6 — the SAME plaintext as `secret_hash`, but reversibly AES-256-GCM-encrypted, needed ONLY to sign outbound webhook relays — bcrypt can't be reversed), `kind`, `callback_url`, `status`. Seeded with `ELKASIR-SELFORDER`/`ELKASIR-SUBSCRIBE` (migration 000019). |
+| `payment_gateway_config` | `payment`      | Single-row (app-enforced) gateway config — active provider + AES-256-GCM-encrypted credentials (§9.1.2). Replaces `TRIPAY_*`/`MIDTRANS_*` env vars after the one-time migration on first boot (§9.1.7). |
+| `payment_charge_apps`    | `payment`      | Thin index (`order_ref` PK → `app_id`, `provider_ref`) written by `CreateCharge`/`CreateChannelCharge` — NOT a ledger, used to resolve which registered consumer/app owns a webhook callback (§9.1.4) AND (Part 3, §10.2 EB2) to translate an external caller's own `orderRef` into the gateway's `provider_ref` for status checks. |
 
 > Reports (`report` module) **read across** transaction/transaction_items/staff data, but only via
 > queries that stay within the analytics read model — see `db/queries/reports.sql`.
+>
+> `payment` owns `webhook_events` (generic idempotency), `payment_clients` (app registry),
+> `payment_gateway_config` (encrypted gateway credentials), and `payment_charge_apps` (dispatch
+> index) — it never writes to `payments` or `subscription_invoices` (still no business ledger of
+> its own). See `knowledge/MODULE_MAP.md` §"One shared payment webhook, registry-driven dispatch".
 
 ---
 
@@ -108,3 +137,23 @@ Each table is owned by exactly one module. Cross-module references (primitive ID
   - `000003_operations` — shifts, transactions, transaction_items, cash_movements, withdrawals.
   - `000004_selforder_payments` — self_orders, self_order_items, payments (+ circular tx↔self_order link).
   - `000005_drop_cross_module_fks` — drop 16 cross-module business FKs (columns/indexes retained).
+  - `000015_subscription_billing` — subscription_plans, store_subscriptions, subscription_invoices
+    (tenant billing to the platform; separate from selforder's self_orders/payments — see §4).
+  - `000016_platform` — platform_users; `stores.slug`/`stores.status` (tenant lifecycle); fixes
+    `staff.username` to globally unique; `refresh_tokens.actor` gains `'platform'`.
+  - `000017_withdrawal_processing` — `withdrawals` gains `processed_by`/`claimed_at`/
+    `processed_at`/`rejected_reason` (claim→complete flow, §2.7/§2.8).
+  - `000018_subscription_legacy_backfill` — one-time data migration: seeds a hidden
+    `legacy-grandfather` plan (`is_active=0`) and backfills an `active` `store_subscriptions` row
+    (20-year period) for every pre-existing tenant that had none, so the new §2.15
+    subscription-gate doesn't retroactively lock out tenants who were never asked to buy a plan.
+  - `000019_payment_gateway_registry` — `payment_clients` (app registry, seeded with
+    `ELKASIR-SELFORDER`/`ELKASIR-SUBSCRIBE`), `payment_gateway_config` (encrypted, DB-backed
+    gateway credentials, replacing `.env`), `payment_charge_apps` (order_ref→app_id dispatch
+    index) — PLAN.md §9, Part 2.
+  - `000020_payment_external_api` — `payment_clients.secret_enc` (AES-256-GCM-encrypted copy of
+    the same plaintext already bcrypt-hashed into `secret_hash`, needed to sign outbound webhook
+    relays) — PLAN.md §10, Part 3.
+  - `000021_payment_charge_provider_ref` — `payment_charge_apps.provider_ref` (lets the external
+    status-check endpoint translate a caller's own `orderRef` into the gateway's `provider_ref`)
+    — PLAN.md §10.2 EB2, Part 3.

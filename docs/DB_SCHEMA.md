@@ -26,6 +26,8 @@ PK: `id`.
 |--------|------|-------|
 | `id` | CHAR(26) | PK (ULID). |
 | `name` | VARCHAR(150) | NOT NULL. |
+| `slug` | VARCHAR(60) | NOT NULL, unique (migration 000016). Identitas tenant di URL self-order publik (`/order/<slug>/<kodeMeja>`) — fix untuk kode meja yang cuma unik per-toko. Ditulis modul `platform` saat tenant dibuat; dibaca (read-only) modul `settings` untuk ditampilkan admin. |
+| `status` | ENUM(`active`,`suspended`) | default `active` (migration 000016). Ditulis modul `platform`; dibaca `auth` di setiap request+login/refresh untuk menegakkan blokir akses tenant yang di-suspend (§2.13, `auth/infrastructure/middleware.go` — read langsung, tanpa cache). |
 | `type` | VARCHAR(60) | default `'F&B'`. |
 | `address` | VARCHAR(255) | nullable. |
 | `phone` | VARCHAR(40) | nullable. |
@@ -35,9 +37,10 @@ PK: `id`.
 | `created_at` / `updated_at` | DATETIME | timestamps. |
 
 References: none (root). Every other tenant table references this via a physical `store_id` FK.
-Profil (`name`/`address`/`phone`/`logo_url`) dibaca-tulis oleh modul `settings` (pengecualian
-shared-kernel — lihat `knowledge/DATABASE_GUIDE.md`), disatukan dengan tabel `settings` dalam satu
-payload admin `GET/PATCH /settings` dan `GET /pos/config`.
+Profil (`name`/`address`/`phone`/`logo_url`) dibaca-tulis oleh modul `settings`; siklus hidup
+(`slug`/`status`) dibaca-tulis oleh modul `platform` — DUA pengecualian shared-kernel (lihat
+`knowledge/DATABASE_GUIDE.md`). Profil disatukan dengan tabel `settings` dalam satu payload admin
+`GET/PATCH /settings` dan `GET /pos/config`.
 
 ---
 
@@ -83,14 +86,14 @@ PK: `id`. Unique: `email`. Index: `store_id`.
 
 ## `staff` — staff / auth
 
-PK: `id`. Unique: `(store_id, username)`. Index: `store_id`.
+PK: `id`. Unique: `username` (GLOBAL — migration 000016; was `(store_id, username)`). Index: `store_id`.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | CHAR(26) | PK. |
 | `store_id` | CHAR(26) | **physical FK → stores(id)** (CASCADE). |
 | `name` | VARCHAR(150) | NOT NULL. |
-| `username` | VARCHAR(100) | NOT NULL (unique per store). |
+| `username` | VARCHAR(100) | NOT NULL, unique GLOBALLY (not just per-store) — fix for a login collision bug: the POS login endpoint (shared mobile APK, all tenants) carries no tenant identifier, so a per-store-only unique username let one tenant's staff collide with another's (silent lockout). Same fix already applied to `admin_users.username` in migration 000006. |
 | `email` | VARCHAR(190) | nullable. |
 | `password_hash` | VARCHAR(100) | bcrypt. |
 | `role` | ENUM(`cashier`,`supervisor`) | default `cashier`. |
@@ -106,12 +109,30 @@ PK: `id`. Unique: `token_hash`. Index: `(actor, subject_id)`.
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | CHAR(26) | PK. |
-| `actor` | ENUM(`admin`,`staff`) | which identity context. |
-| `subject_id` | CHAR(26) | **primitive ID** → admin_users(id) or staff(id) depending on `actor`. |
+| `actor` | ENUM(`admin`,`staff`,`platform`) | which identity context (`platform` added in migration 000016). |
+| `subject_id` | CHAR(26) | **primitive ID** → admin_users(id), staff(id), or platform_users(id) depending on `actor`. |
 | `token_hash` | CHAR(64) | SHA-256 of the opaque refresh token, unique. |
 | `expires_at` | DATETIME | NOT NULL. |
 | `revoked_at` | DATETIME | nullable. |
 | `created_at` | DATETIME | timestamp. |
+
+---
+
+## `platform_users` — platformuser / auth (migration 000016)
+
+PK: `id`. Unique: `email`. Superadmin (platform operator) identity — the ONE table in this
+schema with NO `store_id` column at all; not scoped to any tenant. `platformuser` owns CRUD
+(create/deactivate-only/reset password — never hard-delete, §2.8/§2.9); `auth` separately keeps
+its own narrow login-lookup queries against the same table (same split as `admin_users`/`staff`).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK. |
+| `name` | VARCHAR(150) | NOT NULL. |
+| `email` | VARCHAR(190) | NOT NULL, unique. |
+| `password_hash` | VARCHAR(100) | bcrypt. |
+| `status` | ENUM(`active`,`inactive`) | default `active`. |
+| `created_at` / `updated_at` | DATETIME | timestamps. |
 
 ---
 
@@ -142,6 +163,60 @@ PK: `id`. Unique: `(provider, event_id)` (dedupe).
 | `event_id` | VARCHAR(255) | provider event id. |
 | `processed_at` | DATETIME | default now. |
 | `created_at` | DATETIME | timestamp. |
+
+---
+
+## `payment_clients` — payment (PLAN.md §9.1.3 Part 2; §10.1.6 Part 3)
+
+App registry — replaces the old `"sub_"` ref-prefix convention. PK: `id`. Unique: `app_id`.
+Seeded (migration `000019`) with two `kind='internal'` rows: `ELKASIR-SELFORDER`,
+`ELKASIR-SUBSCRIBE` — never hard-deleted, never deactivatable through the registry endpoints
+(enforced by the `AND kind='external'` guard on the underlying UPDATE queries).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK. |
+| `app_id` | VARCHAR(60) | Unique, human-readable (e.g. `ELKASIR-SELFORDER`, or `NAME-XXXX` for external apps). |
+| `name` | VARCHAR(150) | Display name. |
+| `secret_hash` | VARCHAR(100) | bcrypt hash. NULL for `kind='internal'` (no network hop to authenticate — §9.1.9). Verified on incoming `POST /auth/app/token` (§10.1.3). |
+| `secret_enc` | VARBINARY(500) | Migration `000020`, Part 3. The SAME plaintext as `secret_hash`, but reversibly AES-256-GCM-encrypted (same key as `payment_gateway_config`'s secret columns) — needed ONLY to sign outbound webhook relays to `kind='external'` apps (bcrypt can't be reversed). NULL for `kind='internal'`. |
+| `kind` | ENUM('internal','external') | `internal` = seeded, never created/deleted via the API. |
+| `callback_url` | VARCHAR(500) | Nullable; only meaningful for `kind='external'` — the outbound webhook relay target (§10.1.10). |
+| `status` | ENUM('active','inactive') | Checked live on every `ActorApp` request (§10.1.4) — no caching, deactivation revokes access to unexpired tokens immediately. |
+| `created_at`/`updated_at` | DATETIME | |
+
+## `payment_gateway_config` — payment (PLAN.md §9.1.2, Part 2)
+
+Single logical row (enforced by application convention, not a DB constraint). Secret columns
+are AES-256-GCM ciphertext, base64-encoded, keyed by `CONFIG_ENCRYPTION_KEY` (env) — never
+plaintext, never returned to the browser (masked in `GetConfig`).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK. |
+| `provider` | VARCHAR(20) | `tripay` \| `midtrans` \| `''` (simulation). |
+| `sandbox` | TINYINT(1) | |
+| `tripay_api_key_enc` / `tripay_private_key_enc` / `tripay_merchant_code_enc` | VARBINARY(500) | Encrypted; nullable. |
+| `tripay_method` | VARCHAR(30) | Default channel code, e.g. `QRIS` — not a secret. |
+| `midtrans_server_key_enc` | VARBINARY(500) | Encrypted; nullable. |
+| `created_at`/`updated_at` | DATETIME | |
+
+## `payment_charge_apps` — payment (PLAN.md §9.1.4 Part 2; §10.2 EB2 Part 3)
+
+Thin dispatch index — NOT a business ledger. PK: `order_ref`. Written by
+`CreateCharge`/`CreateChannelCharge`, read once per incoming webhook to resolve which
+registered `app_id` (and therefore which in-process consumer) a callback belongs to. Also
+doubles (Part 3) as the ownership + ref-translation lookup behind the external
+`GET /external/payments/charges/{orderRef}/status` route — the PK uniqueness on `order_ref` is
+also what turns a retried `POST /external/payments/charges` into a `409 Conflict` (§10.1.9,
+via the existing `db.IsDuplicate` helper — no new idempotency table).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `order_ref` | VARCHAR(191) | PK — the ref passed to `CreateCharge`, echoed back by the gateway on webhook. |
+| `app_id` | VARCHAR(60) | Not a DB FK to `payment_clients.app_id` (cross-module-style primitive reference, same convention as everywhere else in this schema). |
+| `provider_ref` | VARCHAR(191) | Migration `000021`, Part 3. Nullable. The gateway's own reference for this charge — lets the external status endpoint translate a caller's `orderRef` into the `provider_ref` needed by `CheckStatus`, without exposing gateway internals to the caller. |
+| `created_at` | DATETIME | |
 
 ---
 
@@ -181,7 +256,10 @@ PK: `id`. Unique: `(store_id, sku)`. Indexes: `(store_id, status)`, `category_id
 
 ## `dining_tables` — table
 
-PK: `id`. Unique: `(store_id, code)`. `code` encodes the self-order QR (`/order/<code>`).
+PK: `id`. Unique: `(store_id, code)`. `code` encodes the self-order QR
+(`/order/<store-slug>/<code>` — the tenant slug is REQUIRED in the URL since `code` alone is only
+unique per-store; the public self-order entry point joins to `stores.slug` to resolve the
+tenant — see `FindTableByStoreSlugAndCode` and `knowledge/DATABASE_GUIDE.md` §3).
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -295,7 +373,9 @@ PK: `id`. Indexes: `shift_id`, `(store_id, created_at)`.
 
 ## `withdrawals` — withdrawal
 
-PK: `id`. Index: `(store_id, created_at)`.
+PK: `id`. Index: `(store_id, created_at)`. `status` enum's 4 values are all meaningfully used by
+the claim→complete flow since migration 000017 (§2.7): `pending` → (Klaim) → `processing` →
+(Tandai Sukses) → `success`, or → (Tolak, from either `pending` or `processing`) → `failed`.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -308,6 +388,10 @@ PK: `id`. Index: `(store_id, created_at)`.
 | `status` | ENUM(`pending`,`processing`,`success`,`failed`) | default `pending`. |
 | `reference` | VARCHAR(100) | nullable. |
 | `requested_by` | CHAR(26) | nullable. **primitive ID** → admin_users(id) (FK dropped). |
+| `processed_by` | CHAR(26) | nullable (migration 000017). **primitive ID** → platform_users(id) — set at claim time (`Claim`), carried through to the outcome (`MarkSuccess`/`MarkRejected`); never a FK, same "Bebas dari Penjara FK" convention as `requested_by`. |
+| `claimed_at` | DATETIME | nullable (migration 000017) — set when a superadmin claims (`pending`→`processing`). |
+| `processed_at` | DATETIME | nullable (migration 000017) — set on the final outcome (`success` or `failed`). |
+| `rejected_reason` | VARCHAR(255) | nullable (migration 000017) — required input for `Tolak`, shown to the tenant. |
 | `created_at` / `updated_at` | DATETIME | timestamps. |
 
 ---
@@ -356,21 +440,84 @@ PK: `id`. Index: `self_order_id`.
 
 ---
 
-## `payments` — payment
+## `payments` — selforder
 
-PK: `id`. Indexes: `self_order_id`, `provider_ref`. Gateway (Tripay/Midtrans) payment history/reconciliation.
+PK: `id`. Indexes: `self_order_id`, `provider_ref`. Gateway (Tripay/Midtrans) payment history/
+reconciliation for CUSTOMER self-order payments — **not** tenant billing (see `subscription_invoices`
+below, a separate table owned by a separate module, even though both go through the same `payment`
+gateway module). Originally owned by `payment`; moved to `selforder` so the two business domains'
+money never share a table — see `knowledge/MODULE_MAP.md` §"One shared payment webhook, two consumers".
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | CHAR(26) | PK. |
 | `store_id` | CHAR(26) | **physical FK → stores(id)** (CASCADE). |
-| `self_order_id` | CHAR(26) | NOT NULL. **primitive ID** → self_orders(id) (FK dropped in 000005). |
+| `self_order_id` | CHAR(26) | NOT NULL. Now an **intra-module** reference (both tables owned by `selforder`) — no FK constraint exists (dropped in 000005, back when `payment` still owned this table), one could be added back but isn't required. |
 | `provider` | ENUM(`xendit`,`midtrans`,`tripay`) | default `tripay` (migration 000008; older values kept for back-compat). |
 | `provider_ref` | VARCHAR(190) | nullable (external ref). |
 | `method` | ENUM(`qris`) | default `qris`. |
 | `amount` | BIGINT | default 0. |
 | `status` | ENUM(`pending`,`paid`,`expired`,`failed`) | default `pending`. |
 | `raw_payload` | LONGTEXT | nullable (raw provider payload). |
+| `created_at` / `updated_at` | DATETIME | timestamps. |
+
+---
+
+## `subscription_plans` — subscription
+
+PK: `id`. Unique: `code`. Reference/catalog data (seeded via `bootstrap.Seed`), not tenant data.
+Includes one hidden row, `code='legacy-grandfather'` (`is_active=0`, seeded by migration
+`000018_subscription_legacy_backfill`) — never shown in the tenant-facing plan picker, exists
+only as the backfill target for pre-existing tenants (see `store_subscriptions` above).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK. |
+| `code` | VARCHAR(40) | NOT NULL, unique (e.g. `basic`, `pro`). |
+| `name` | VARCHAR(100) | NOT NULL. |
+| `price` | BIGINT | NOT NULL — billed amount (rupiah). |
+| `period_days` | INT | default 30 — billing cycle length. |
+| `is_active` | TINYINT(1) | default 1. |
+| `created_at` / `updated_at` | DATETIME | timestamps. |
+
+---
+
+## `store_subscriptions` — subscription
+
+PK: `id`. Unique: `store_id` (one row per store). Index: `plan_id`. Current billing status of a
+tenant. "Has an active package" (§2.15, gates `ActorAdmin`/`ActorStaff` access) = a row with
+`status='active'` AND `current_period_end >= NOW()`, computed live on every gated
+login/request — no cron ever flips `status`. Migration 000018 backfills every pre-existing
+tenant onto a hidden `legacy-grandfather` plan (see `subscription_plans` below) so this gate
+doesn't retroactively lock out tenants who predate it.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK. |
+| `store_id` | CHAR(26) | **physical FK → stores(id)** (CASCADE). |
+| `plan_id` | CHAR(26) | **physical FK → subscription_plans(id)** (intra-module). |
+| `status` | ENUM(`trial`,`active`,`past_due`,`expired`,`canceled`) | default `trial`. |
+| `current_period_start` / `current_period_end` | DATETIME | nullable — set/extended on invoice payment. |
+| `created_at` / `updated_at` | DATETIME | timestamps. |
+
+---
+
+## `subscription_invoices` — subscription
+
+PK: `id`. Indexes: `store_id`, `provider_ref`. This module's OWN gateway payment ledger — the
+tenant-billing analogue of selforder's `payments`, but a **separate table** so the two domains'
+money is never mixed.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | CHAR(26) | PK — also embedded (prefixed `sub_`) as the gateway order ref, so the shared payment webhook can route the callback back here. |
+| `store_id` | CHAR(26) | **physical FK → stores(id)** (CASCADE). |
+| `plan_id` | CHAR(26) | **physical FK → subscription_plans(id)** (intra-module). |
+| `amount` | BIGINT | default 0 — snapshot of the plan price at checkout time. |
+| `status` | ENUM(`pending`,`paid`,`expired`,`failed`) | default `pending`. |
+| `provider` | ENUM(`tripay`,`midtrans`) | NOT NULL — from `paymentclient.Charge.Provider`. |
+| `provider_ref` | VARCHAR(190) | nullable (external ref). |
+| `period_start` / `period_end` | DATETIME | nullable — filled in on payment confirmation (not at checkout time, since payment may land days later). |
 | `created_at` / `updated_at` | DATETIME | timestamps. |
 
 ---
@@ -395,12 +542,16 @@ These columns were physical FKs originally but were dropped in migration
 | `cash_movements.created_by` | `staff.id` | staff |
 | `cash_movements.approved_by` | `staff.id` | staff |
 | `withdrawals.requested_by` | `admin_users.id` | adminuser |
+| `withdrawals.processed_by` | `platform_users.id` | platformuser (added migration 000017 — never had a physical FK) |
 | `self_orders.table_id` | `dining_tables.id` | table |
 | `self_orders.transaction_id` | `transactions.id` | transaction |
 | `self_order_items.product_id` | `products.id` | product |
-| `payments.self_order_id` | `self_orders.id` | selforder |
 
-**Retained physical FKs:** every `store_id → stores(id)` (tenant key, CASCADE), plus the three
-intra-module links `products.category_id → product_categories(id)` (SET NULL),
-`transaction_items.transaction_id → transactions(id)` (CASCADE), and
-`self_order_items.self_order_id → self_orders(id)` (CASCADE).
+`payments.self_order_id` is **not** listed above — it's an intra-module reference (both tables
+owned by `selforder`), not a cross-module one; see the `payments` section.
+
+**Retained physical FKs:** every `store_id → stores(id)` (tenant key, CASCADE), the intra-module
+links `products.category_id → product_categories(id)` (SET NULL),
+`transaction_items.transaction_id → transactions(id)` (CASCADE),
+`self_order_items.self_order_id → self_orders(id)` (CASCADE), and the `subscription` module's own
+`store_subscriptions.plan_id` / `subscription_invoices.plan_id → subscription_plans(id)`.

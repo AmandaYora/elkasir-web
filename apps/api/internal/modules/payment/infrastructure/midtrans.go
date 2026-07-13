@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -71,7 +72,14 @@ type mtChargeResponse struct {
 	Actions       []mtChargeAction `json:"actions"`
 }
 
-func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amount int64) (qrResult, error) {
+// createCharge saat ini hanya mengimplementasikan ChannelQRIS (perilaku tak berubah dari
+// sebelum Part 2). ChannelVA sengaja BELUM diimplementasikan untuk Midtrans — Tripay adalah
+// provider yang aktif hari ini (PAYMENT_PROVIDER=tripay); mengerjakan VA-nya Midtrans sebelum
+// benar-benar dipakai di produksi hanya kerja spekulatif (lihat PLAN.md §9.2 PB1's note).
+func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amount int64, channel paymentclient.Channel, _ paymentclient.ChannelOptions) (chargeResult, error) {
+	if channel != paymentclient.ChannelQRIS && channel != "" {
+		return chargeResult{}, fmt.Errorf("midtrans: channel %q belum didukung", channel)
+	}
 	body, _ := json.Marshal(mtChargeRequest{
 		PaymentType:        "qris",
 		TransactionDetails: mtTransactionDetls{OrderID: orderRef, GrossAmount: amount},
@@ -80,7 +88,7 @@ func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amo
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/v2/charge", bytes.NewReader(body))
 	if err != nil {
-		return qrResult{}, err
+		return chargeResult{}, err
 	}
 	auth := base64.StdEncoding.EncodeToString([]byte(g.serverKey + ":"))
 	req.Header.Set("Authorization", "Basic "+auth)
@@ -89,14 +97,14 @@ func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amo
 
 	resp, err := g.http.Do(req)
 	if err != nil {
-		return qrResult{}, err
+		return chargeResult{}, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	var cr mtChargeResponse
 	if err := json.Unmarshal(raw, &cr); err != nil {
-		return qrResult{}, fmt.Errorf("midtrans: parse response (HTTP %d): %w", resp.StatusCode, err)
+		return chargeResult{}, fmt.Errorf("midtrans: parse response (HTTP %d): %w", resp.StatusCode, err)
 	}
 	// Midtrans membalas status_code "201" saat QRIS dibuat; selain 2xx = gagal.
 	if !strings.HasPrefix(cr.StatusCode, "2") {
@@ -104,12 +112,51 @@ func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amo
 		if msg == "" {
 			msg = string(raw)
 		}
-		return qrResult{}, fmt.Errorf("midtrans: charge ditolak (status_code %s): %s", cr.StatusCode, msg)
+		return chargeResult{}, fmt.Errorf("midtrans: charge ditolak (status_code %s): %s", cr.StatusCode, msg)
 	}
-	return qrResult{
+	return chargeResult{
 		Ref:        cr.TransactionID,
 		QRString:   cr.QRString,
 		QRImageURL: mtPickQRImageURL(cr.Actions),
+	}, nil
+}
+
+// listChannels: hanya QRIS diketahui aktif untuk Midtrans dalam implementasi ini (lihat
+// createCharge di atas) — bukan daftar lengkap kanal yang Midtrans sendiri dukung.
+func (g *midtransGateway) listChannels(_ context.Context) ([]paymentclient.ChannelInfo, error) {
+	if !g.enabled() {
+		return nil, nil
+	}
+	return []paymentclient.ChannelInfo{{Channel: paymentclient.ChannelQRIS, Code: "qris", Name: "QRIS", Active: true}}, nil
+}
+
+// checkStatus memanggil GET /v2/{order_id}/status — pull-based, independen webhook.
+func (g *midtransGateway) checkStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/v2/"+url.PathEscape(providerRef)+"/status", nil)
+	if err != nil {
+		return paymentclient.ChargeStatus{}, err
+	}
+	auth := base64.StdEncoding.EncodeToString([]byte(g.serverKey + ":"))
+	req.Header.Set("Authorization", "Basic "+auth)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return paymentclient.ChargeStatus{}, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var sr struct {
+		TransactionStatus string `json:"transaction_status"`
+		FraudStatus       string `json:"fraud_status"`
+	}
+	if err := json.Unmarshal(raw, &sr); err != nil {
+		return paymentclient.ChargeStatus{}, fmt.Errorf("midtrans: gagal mengambil status transaksi (HTTP %d)", resp.StatusCode)
+	}
+	return paymentclient.ChargeStatus{
+		Paid:      mtIsPaid(sr.TransactionStatus) && mtFraudAccepted(sr.FraudStatus),
+		RawStatus: sr.TransactionStatus,
 	}, nil
 }
 

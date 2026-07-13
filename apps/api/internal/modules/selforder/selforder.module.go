@@ -5,6 +5,8 @@
 package selforder
 
 import (
+	"context"
+
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	paymentclient "github.com/elkasir/api/internal/modules/payment/contracts"
 	productclient "github.com/elkasir/api/internal/modules/product/contracts"
@@ -21,6 +23,7 @@ import (
 // Module is the assembled selforder module.
 type Module struct {
 	Handler *presentation.Handler
+	svc     *application.Service
 }
 
 // New assembles the selforder module: repo (built from the uow manager) → service →
@@ -40,5 +43,15 @@ func New(
 	svc := application.NewService(repo, productClient, salesClient, shiftClient, tableClient, paymentClient, settingsClient, uowMgr)
 	return &Module{
 		Handler: presentation.NewHandler(svc, auth),
+		svc:     svc,
 	}
+}
+
+// ApplyWebhookEvent lets the composition-root payment-webhook dispatcher (internal/app)
+// hand an already-verified/parsed/idempotency-checked event to this module's own domain
+// logic — the ONLY place selforder's payment_status/payments ledger get mutated from a
+// gateway callback. Not a contracts/ package because only the composition root calls it
+// (selforder has no other module consumer, same as today).
+func (m *Module) ApplyWebhookEvent(ctx context.Context, ev paymentclient.WebhookEvent) error {
+	return m.svc.ApplyWebhookEvent(ctx, ev)
 }

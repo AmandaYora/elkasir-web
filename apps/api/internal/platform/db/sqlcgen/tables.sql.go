@@ -51,6 +51,39 @@ func (q *Queries) DeleteTable(ctx context.Context, arg DeleteTableParams) error 
 	return err
 }
 
+const findTableByStoreSlugAndCode = `-- name: FindTableByStoreSlugAndCode :one
+SELECT dt.id, dt.store_id, dt.code, dt.name, dt.area, dt.seats, dt.status, dt.created_at, dt.updated_at FROM dining_tables dt
+JOIN stores s ON s.id = dt.store_id
+WHERE s.slug = ? AND dt.code = ? LIMIT 1
+`
+
+type FindTableByStoreSlugAndCodeParams struct {
+	Slug string `json:"slug"`
+	Code string `json:"code"`
+}
+
+// Entry point self-order publik (QR discan pelanggan): store BELUM diketahui, jadi resolve
+// lewat slug toko dulu. `code` sendiri cuma unik per-toko (lihat CreateTable), sehingga tanpa
+// join ke stores.slug ini rentan salah-tenant bila 2 toko kebetulan pakai kode meja yang sama.
+// Join ke `stores` sah di sini karena `stores` adalah shared-kernel (lihat DATABASE_GUIDE §2),
+// bukan pelanggaran batas modul.
+func (q *Queries) FindTableByStoreSlugAndCode(ctx context.Context, arg FindTableByStoreSlugAndCodeParams) (DiningTable, error) {
+	row := q.db.QueryRowContext(ctx, findTableByStoreSlugAndCode, arg.Slug, arg.Code)
+	var i DiningTable
+	err := row.Scan(
+		&i.ID,
+		&i.StoreID,
+		&i.Code,
+		&i.Name,
+		&i.Area,
+		&i.Seats,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getTable = `-- name: GetTable :one
 SELECT id, store_id, code, name, area, seats, status, created_at, updated_at FROM dining_tables WHERE id = ? AND store_id = ? LIMIT 1
 `

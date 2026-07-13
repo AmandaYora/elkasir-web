@@ -6,4 +6,5 @@ import type { ListQuery } from "@/shared/types/pagination";
 export const withdrawalsService = {
   list: (query?: ListQuery) => api.getPage<Withdrawal>(endpoints.withdrawals, { query }),
   create: (body: WithdrawalInput) => api.post<Withdrawal>(endpoints.withdrawals, body),
+  getBalance: () => api.get<{ availableBalance: number }>(endpoints.withdrawalBalance),
 };

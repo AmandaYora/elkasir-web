@@ -1012,8 +1012,11 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ─────────────────────────── Public Self-Order ───────────────────────────
-  /public/order/{tableCode}:
+  # {storeSlug} wajib: kode meja cuma unik per-toko (lihat migration 000016), jadi tenant
+  # harus di-resolve dari slug toko, bukan cuma kode meja.
+  /public/order/{storeSlug}/{tableCode}:
     parameters:
+      - { name: storeSlug, in: path, required: true, schema: { type: string } }
       - { name: tableCode, in: path, required: true, schema: { type: string } }
     get:
       tags: [Public]
@@ -1049,8 +1052,9 @@ paths:
         "422": { $ref: "#/components/responses/Unprocessable" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /public/order/{tableCode}/quote:
+  /public/order/{storeSlug}/{tableCode}/quote:
     parameters:
+      - { name: storeSlug, in: path, required: true, schema: { type: string } }
       - { name: tableCode, in: path, required: true, schema: { type: string } }
     post:
       tags: [Public]
@@ -1775,9 +1779,13 @@ components:
         bank: { type: string }
         account: { type: string }
         holder: { type: string }
-        status: { type: string, enum: [pending, paid, rejected] }
+        # Corrected (was [pending, paid, rejected] — stale, never matched the real DB enum or
+        # what this endpoint actually returns; found during Phase F5's status-vocabulary
+        # reconciliation, PLAN.md §1a). The claim -> complete flow's 4 real values:
+        status: { type: string, enum: [pending, processing, success, failed] }
         reference: { type: string }
         requestedBy: { type: string }
+        rejectedReason: { type: string, description: "Set only when status=failed." }
         createdAt: { type: string, format: date-time }
 
     WithdrawalInput:
@@ -1969,8 +1977,13 @@ components:
         [storeName, storePhone, storeAddress, storeLogoUrl,
          maxDiscountPercent, maxOperationalExpense, cashVarianceTolerance,
          featureSelfOrder, featureQris, featurePayAtCashier, taxEnabled, taxPercent, servicePercent]
+      # storeSlug sengaja TIDAK di 'required': field ini read-only (respons GET saja), tidak
+      # boleh dikirim di body PATCH — skema ini dipakai bersama utk GET response & PATCH body.
       properties:
         storeName: { type: string, description: "Nama toko, tampil di header struk." }
+        storeSlug:
+          type: string
+          description: "Identitas tenant di URL self-order publik (/order/<slug>/<kodeMeja>). Read-only — dikelola modul platform (superadmin), bukan lewat endpoint ini."
         storePhone: { type: string }
         storeAddress: { type: string }
         storeLogoUrl:

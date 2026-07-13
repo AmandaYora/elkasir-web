@@ -1,6 +1,3 @@
--- name: FindTableByCode :one
-SELECT * FROM dining_tables WHERE code = ? LIMIT 1;
-
 -- name: ListActiveProducts :many
 SELECT p.id, p.name, COALESCE(c.name, '') AS category, p.price, COALESCE(p.image_url, '') AS image_url
 FROM products p LEFT JOIN product_categories c ON c.id = p.category_id
@@ -39,3 +36,16 @@ UPDATE self_orders SET payment_status = 'paid', transaction_id = ?, status = ? W
 -- name: ExpireOverdueSelfOrders :execrows
 UPDATE self_orders SET payment_status = 'expired'
 WHERE store_id = ? AND payment_status = 'pending' AND expires_at IS NOT NULL AND expires_at < ?;
+
+-- Ledger pembayaran gateway (tabel `payments`) — dimiliki selforder (satu-satunya pemakai);
+-- module `payment` sendiri sudah tidak menyentuh tabel ini (lihat webhook_events.sql).
+
+-- name: CreatePayment :exec
+INSERT INTO payments (id, store_id, self_order_id, provider, provider_ref, method, amount, status, raw_payload)
+VALUES (?, ?, ?, ?, ?, 'qris', ?, ?, ?);
+
+-- name: GetPaymentBySelfOrder :one
+SELECT * FROM payments WHERE self_order_id = ? ORDER BY created_at DESC LIMIT 1;
+
+-- name: UpdatePaymentStatus :exec
+UPDATE payments SET status = ?, raw_payload = ? WHERE id = ?;

@@ -11,14 +11,16 @@ import (
 )
 
 type Config struct {
-	Env                string
-	Addr               string
-	CORSAllowedOrigins []string
-	PublicBaseURL      string
-	DB                 DB
-	JWT                JWT
-	Payment            Payment
-	Storage            ObjectStorage
+	Env                   string
+	Addr                  string
+	CORSAllowedOrigins    []string
+	PublicBaseURL         string
+	DB                    DB
+	JWT                   JWT
+	Payment               Payment
+	Storage               ObjectStorage
+	SMTP                  SMTP
+	ConfigEncryptionKey   string // PLAN.md §9.1.2 — the one secret that stays in .env
 }
 
 type DB struct {
@@ -29,6 +31,11 @@ type JWT struct {
 	Secret     string
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
+	// AppTokenTTL is the access-token lifetime for ActorApp (external payment API, PLAN.md
+	// §10.1.3) — deliberately separate from AccessTTL: no refresh token is ever issued for this
+	// actor, so re-exchanging via client-credentials is the whole story, and a machine caller
+	// tolerates a different TTL policy than a human session.
+	AppTokenTTL time.Duration
 }
 
 // Payment adalah konfigurasi pembayaran QRIS yang PROVIDER-AGNOSTIC di permukaan: satu
@@ -91,6 +98,21 @@ func (o ObjectStorage) Enabled() bool {
 	return o.Endpoint != "" && o.Bucket != "" && o.AccessKey != "" && o.SecretKey != ""
 }
 
+// SMTP adalah konfigurasi email keluar (opsional) — dipakai `internal/platform/mail` utk
+// notifikasi pencairan (PLAN.md §2.10, Phase B4). Kosong = fitur no-op, sama seperti
+// ObjectStorage saat kredensialnya belum diisi.
+type SMTP struct {
+	Host      string
+	Port      string
+	Username  string
+	Password  string
+	FromEmail string
+	FromName  string
+}
+
+// Enabled menandakan SMTP terkonfigurasi (host + alamat pengirim terisi).
+func (s SMTP) Enabled() bool { return s.Host != "" && s.FromEmail != "" }
+
 func (c Config) IsProduction() bool { return c.Env == "production" }
 
 // Load membaca .env (bila ada) lalu environment, memvalidasi nilai wajib.
@@ -106,9 +128,10 @@ func Load() (Config, error) {
 			DSN: buildDSN(),
 		},
 		JWT: JWT{
-			Secret:     os.Getenv("JWT_SECRET"),
-			AccessTTL:  getDuration("JWT_ACCESS_TTL", 15*time.Minute),
-			RefreshTTL: getDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
+			Secret:      os.Getenv("JWT_SECRET"),
+			AccessTTL:   getDuration("JWT_ACCESS_TTL", 15*time.Minute),
+			RefreshTTL:  getDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
+			AppTokenTTL: getDuration("JWT_APP_TOKEN_TTL", 1*time.Hour),
 		},
 		Payment: loadPayment(),
 		Storage: ObjectStorage{
@@ -121,6 +144,15 @@ func Load() (Config, error) {
 			BasePath:      getEnv("OBJSTORE_BASE_PATH", "elkasir/upload"),
 			PublicBaseURL: getEnv("OBJSTORE_PUBLIC_BASE_URL", ""),
 		},
+		SMTP: SMTP{
+			Host:      getEnv("SMTP_HOST", ""),
+			Port:      getEnv("SMTP_PORT", "587"),
+			Username:  os.Getenv("SMTP_USERNAME"),
+			Password:  os.Getenv("SMTP_PASSWORD"),
+			FromEmail: getEnv("SMTP_FROM_EMAIL", "noreply@elkasir.app"),
+			FromName:  getEnv("SMTP_FROM_NAME", "Elkasir Platform"),
+		},
+		ConfigEncryptionKey: getEnv("CONFIG_ENCRYPTION_KEY", "dev-only-insecure-default-change-me"),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -135,6 +167,11 @@ func (c Config) validate() error {
 	}
 	if len(strings.TrimSpace(c.JWT.Secret)) < 16 {
 		return fmt.Errorf("config: JWT_SECRET wajib diisi (min 16 karakter)")
+	}
+	// CONFIG_ENCRYPTION_KEY mengenkripsi kredensial gateway pembayaran di DB (PLAN.md §9.1.2) —
+	// wajib diganti dari default dev di production (nilai default sengaja tidak aman).
+	if c.IsProduction() && len(strings.TrimSpace(c.ConfigEncryptionKey)) < 16 {
+		return fmt.Errorf("config: CONFIG_ENCRYPTION_KEY wajib diisi (min 16 karakter) di production")
 	}
 	return nil
 }
