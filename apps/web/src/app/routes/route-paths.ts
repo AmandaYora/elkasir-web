@@ -4,9 +4,9 @@ export const ROUTE_PATHS = {
   login: "/login",
   platformLogin: "/platform/login",
   // Marketing homepage — static, frontend-only, no backend integration.
-  homepage: "/homepage",
-  homepageTerms: "/homepage/syarat-ketentuan",
-  homepageContact: "/homepage/kontak",
+  homepage: "/home",
+  homepageTerms: "/home/syarat-ketentuan",
+  homepageContact: "/home/kontak",
   // {slug} toko wajib: kode meja cuma unik per-toko (lihat migration 000016), jadi tenant
   // harus dari slug, bukan cuma kode meja.
   publicOrder: "/order/:slug/:code",
