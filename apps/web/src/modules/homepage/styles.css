@@ -1,0 +1,138 @@
+/* Homepage (marketing) module — scoped design tokens + "counter glow" motif utilities.
+   Concept: the page opens and closes at the register (dark, glowing, alive with orders),
+   and the middle sections happen out on the floor (light, warm, easy to read) — everything
+   lives under .hp-root so it never leaks into the admin dashboard's theme (src/theme). */
+
+.hp-root {
+  /* Light "floor" neutrals — features, steps, pricing. */
+  --hp-bg: #fbfaf6;
+  --hp-surface: #ffffff;
+  --hp-ink: #12181a;
+  --hp-ink-soft: #5c6a6a;
+  --hp-line: #e5e1d3;
+
+  /* Dark "counter" neutrals — nav, hero, footer bookends. */
+  --hp-dark: #081512;
+  --hp-dark-raised: #10221d;
+  --hp-dark-line: rgba(230, 245, 240, 0.1);
+  --hp-dark-ink: #f3f8f6;
+  --hp-dark-ink-soft: #93aaa4;
+
+  /* Accents — the till display glow (emerald→teal) plus one warm "live" amber. */
+  --hp-glow: #34d399;
+  --hp-glow-deep: #14b8a6;
+  --hp-amber: #f5a623;
+
+  /* Type roles, scoped to this module only. */
+  --hp-font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --hp-font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --hp-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  background: var(--hp-bg);
+  color: var(--hp-ink);
+  font-family: var(--hp-font-body);
+  min-height: 100%;
+}
+
+.hp-root ::selection {
+  background: var(--hp-glow);
+  color: var(--hp-dark);
+}
+
+.hp-font-display {
+  font-family: var(--hp-font-display);
+}
+.hp-font-mono {
+  font-family: var(--hp-font-mono);
+}
+
+/* ── Dark bookend sections (nav, hero, footer) — a faint dot-matrix field, like a
+   till display's pixel grid, sitting far behind the content. ───────────────────── */
+.hp-dark-section {
+  position: relative;
+  background: var(--hp-dark);
+  color: var(--hp-dark-ink);
+}
+.hp-dark-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--hp-dark-line) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Fade rules — soft-edged section dividers, replacing hard borders. ──────────── */
+.hp-rule-fade {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--hp-line), transparent);
+}
+.hp-rule-fade-dark {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--hp-dark-line), transparent);
+}
+
+/* ── Hero copy entrance — one orchestrated rise on load. ─────────────────────────── */
+@keyframes hp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hp-rise {
+  animation: hp-rise 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Order-ticket stack — the page's signature: pesanan landing at the register the
+   instant a customer pays, exactly as Elkasir's self-order flow works. Cards print in
+   with a staggered cascade and settle at a slight, "just landed" tilt. ─────────────── */
+@keyframes hp-ticket-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(var(--hp-tilt, 0deg));
+  }
+}
+.hp-ticket {
+  animation: hp-ticket-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--hp-delay, 0ms);
+  transform: rotate(var(--hp-tilt, 0deg));
+}
+
+/* ── Live pulse — a single breathing dot marks the one order still "Baru". ──────── */
+@keyframes hp-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(245, 166, 35, 0);
+  }
+}
+.hp-pulse-dot {
+  animation: hp-pulse 1.8s ease-out infinite;
+}
+
+/* ── Glow numerals — prices read like a lit register display. ───────────────────── */
+.hp-glow-num {
+  font-family: var(--hp-font-mono);
+  text-shadow: 0 0 18px rgba(52, 211, 153, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-rise,
+  .hp-ticket {
+    animation: none;
+  }
+  .hp-pulse-dot {
+    animation: none;
+  }
+}
