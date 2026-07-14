@@ -12,7 +12,8 @@ const IncomingOrdersPage = lazy(() => import("@/modules/self-order/pages/Incomin
 const ShiftsPage = lazy(() => import("@/modules/shifts/pages/ShiftsPage"));
 const TablesPage = lazy(() => import("@/modules/tables/pages/TablesPage"));
 const CashMovementsPage = lazy(() => import("@/modules/cash-movements/pages/CashMovementsPage"));
-const WithdrawalsPage = lazy(() => import("@/modules/withdrawals/pages/WithdrawalsPage"));
+// Penarikan disembunyikan sementara (frontend-only) — lihat AppLayout.tsx.
+// const WithdrawalsPage = lazy(() => import("@/modules/withdrawals/pages/WithdrawalsPage"));
 const StatisticsPage = lazy(() => import("@/modules/statistics/pages/StatisticsPage"));
 const StaffPage = lazy(() => import("@/modules/staff/pages/StaffPage"));
 const UsersPage = lazy(() => import("@/modules/users/pages/UsersPage"));
@@ -31,7 +32,7 @@ export const protectedRoutes: RouteObject[] = [
       { path: ROUTE_PATHS.shifts, element: <ShiftsPage /> },
       { path: ROUTE_PATHS.tables, element: <TablesPage /> },
       { path: ROUTE_PATHS.cashMovements, element: <CashMovementsPage /> },
-      { path: ROUTE_PATHS.withdrawals, element: <WithdrawalsPage /> },
+      // { path: ROUTE_PATHS.withdrawals, element: <WithdrawalsPage /> },
       { path: ROUTE_PATHS.statistics, element: <StatisticsPage /> },
       { path: ROUTE_PATHS.staff, element: <StaffPage /> },
       { path: ROUTE_PATHS.users, element: <UsersPage /> },

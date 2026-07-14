@@ -42,7 +42,8 @@ const tenantNavGroups: NavGroup[] = [
       { title: "Shift Staf", to: ROUTE_PATHS.shifts, icon: Clock },
       { title: "Meja", to: ROUTE_PATHS.tables, icon: LayoutGrid },
       { title: "Mutasi Kas", to: ROUTE_PATHS.cashMovements, icon: Banknote },
-      { title: "Penarikan", to: ROUTE_PATHS.withdrawals, icon: ArrowDownToLine },
+      // Penarikan disembunyikan sementara dari sidebar (frontend-only, lihat protected.routes.tsx).
+      // { title: "Penarikan", to: ROUTE_PATHS.withdrawals, icon: ArrowDownToLine },
     ],
   },
   {
