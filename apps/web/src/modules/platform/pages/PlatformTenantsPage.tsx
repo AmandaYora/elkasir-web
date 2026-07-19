@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Search,
-  Plus,
-  MoreHorizontal,
-  Ban,
-  CheckCircle2,
-  Building2,
-  KeyRound,
-} from "lucide-react";
+import { Search, Plus, MoreHorizontal, Ban, CheckCircle2, Building2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -335,13 +327,7 @@ function TenantForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ResetAdminPasswordModal({
-  tenant,
-  onDone,
-}: {
-  tenant: Tenant;
-  onDone: () => void;
-}) {
+function ResetAdminPasswordModal({ tenant, onDone }: { tenant: Tenant; onDone: () => void }) {
   const adminsQuery = useAsync(() => platformService.listTenantAdmins(tenant.id), [tenant.id]);
   const admins: TenantAdmin[] = adminsQuery.data ?? [];
 
