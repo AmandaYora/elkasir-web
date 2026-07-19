@@ -35,15 +35,6 @@ func (h *Handler) Routes(r chi.Router) {
 		})
 		r.Post("/logout", h.logout)
 
-		// External payment API client-credentials exchange (PLAN.md §10.1.3/§10.1.11) — its own
-		// rate-limit group, deliberately tighter than the human-login group above (10/min vs
-		// 20/min) since this is the one endpoint an attacker could hammer while guessing secrets
-		// across many app_ids.
-		r.Group(func(r chi.Router) {
-			r.Use(httpserver.RateLimit(10))
-			r.Post("/app/token", h.appToken)
-		})
-
 		r.Group(func(r chi.Router) {
 			r.Use(h.auth.Authenticate)
 			r.Get("/me", h.me)
@@ -63,17 +54,6 @@ type staffLoginRequest struct {
 
 type refreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
-}
-
-type appTokenRequest struct {
-	AppID  string `json:"appId"`
-	Secret string `json:"secret"`
-}
-
-// appTokenResponse deliberately has NO refreshToken field (§10.1.3 — ActorApp never gets one).
-type appTokenResponse struct {
-	AccessToken string `json:"accessToken"`
-	ExpiresIn   int64  `json:"expiresIn"`
 }
 
 type userDTO struct {
@@ -163,24 +143,6 @@ func (h *Handler) platformLogin(w http.ResponseWriter, r *http.Request) {
 		AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken, ExpiresIn: pair.ExpiresIn,
 		User: toUserDTO(identity),
 	}, "Login berhasil")
-}
-
-func (h *Handler) appToken(w http.ResponseWriter, r *http.Request) {
-	var req appTokenRequest
-	if err := httpx.DecodeJSON(w, r, &req); err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	if req.AppID == "" || req.Secret == "" {
-		httpx.Error(w, httpx.Validation("appId dan secret wajib diisi."))
-		return
-	}
-	access, expiresIn, err := h.svc.LoginApp(r.Context(), req.AppID, req.Secret)
-	if err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.OK(w, appTokenResponse{AccessToken: access, ExpiresIn: expiresIn}, "Token berhasil diterbitkan")
 }
 
 func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {

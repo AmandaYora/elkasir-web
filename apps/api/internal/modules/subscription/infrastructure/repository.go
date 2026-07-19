@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elkasir/api/internal/modules/subscription/domain"
+	"github.com/elkasir/api/internal/platform/db"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 	"github.com/elkasir/api/internal/platform/id"
 )
@@ -81,14 +82,24 @@ func (r *Repo) GetByStore(ctx context.Context, storeID string) (domain.Subscript
 	return toSubscription(s), nil
 }
 
-// CreateInvoice persists a new pending invoice and returns the resulting read model.
+// CreateInvoice persists a new pending invoice and returns the resulting read model. Returns
+// domain.ErrInvoiceAlreadyPending (wrapped) if the store already has an unresolved invoice open —
+// enforced at the DB level by migration 000025's generated-column unique index, the race-free
+// backstop behind application.Service's app-level pre-check (see Checkout).
 func (r *Repo) CreateInvoice(ctx context.Context, invID, storeID, planID, provider, providerRef string, amount int64) (domain.Invoice, error) {
 	err := r.q.CreateSubscriptionInvoice(ctx, sqlcgen.CreateSubscriptionInvoiceParams{
 		ID: invID, StoreID: storeID, PlanID: planID, Amount: amount,
 		Status:      sqlcgen.SubscriptionInvoicesStatusPending,
 		Provider:    sqlcgen.SubscriptionInvoicesProvider(provider),
 		ProviderRef: nullStr(providerRef),
+		// StoreIDShadow: a plain copy of storeID, NOT a real second piece of data — see migration
+		// 000025's doc comment for why the generated pending-lock column can't read store_id
+		// directly (InnoDB forbids it once store_id is the child side of an ON DELETE CASCADE FK).
+		StoreIDShadow: nullStr(storeID),
 	})
+	if db.IsDuplicate(err) {
+		return domain.Invoice{}, domain.ErrInvoiceAlreadyPending
+	}
 	if err != nil {
 		return domain.Invoice{}, err
 	}
@@ -97,6 +108,47 @@ func (r *Repo) CreateInvoice(ctx context.Context, invID, storeID, planID, provid
 		Status: string(sqlcgen.SubscriptionInvoicesStatusPending), Provider: provider, ProviderRef: providerRef,
 		CreatedAt: time.Now().UTC(),
 	}, nil
+}
+
+// ListPendingElProof returns up to `limit` ElProof-sourced invoices still pending, oldest first
+// — backs the reconciliation poller (PLAN.md §11 Part C), needed now that webhook delivery for
+// subscription billing depends on a real cross-server, best-effort, single-attempt relay from
+// ElProof (unlike the old in-process dispatch, which never needed a fallback). limit bounds each
+// tick to a fixed-size batch — mirrors ElProof's own reconcileBatchLimit on its sweep — so a
+// large backlog can't turn one tick into an unbounded burst of outbound requests.
+func (r *Repo) ListPendingElProof(ctx context.Context, limit int32) ([]domain.Invoice, error) {
+	rows, err := r.q.ListPendingElProofInvoices(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Invoice, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toInvoice(row))
+	}
+	return out, nil
+}
+
+// GetPendingInvoice returns the store's most recent unresolved invoice, if any — backs the
+// checkout double-submit guard (a store should never have two live charges open for the same
+// billing intent). Returns sql.ErrNoRows (unwrapped, per this repo's existing convention — see
+// GetByStore) when there is none.
+func (r *Repo) GetPendingInvoice(ctx context.Context, storeID string) (domain.Invoice, error) {
+	row, err := r.q.GetPendingSubscriptionInvoiceByStore(ctx, storeID)
+	if err != nil {
+		return domain.Invoice{}, err
+	}
+	return toInvoice(row), nil
+}
+
+// SetInvoiceProviderRef fills in the gateway's own charge reference AFTER a successful charge
+// (Checkout creates the invoice before calling the gateway — see service.go — so this field
+// isn't known yet at CreateInvoice time). Informational only for ElProof invoices: reconciliation
+// keys off the invoice's own ID as orderRef, never providerRef (see payment/infrastructure/
+// elproof.go's checkStatus doc) — a failure here is never fatal to checkout.
+func (r *Repo) SetInvoiceProviderRef(ctx context.Context, invoiceID, providerRef string) error {
+	return r.q.SetSubscriptionInvoiceProviderRef(ctx, sqlcgen.SetSubscriptionInvoiceProviderRefParams{
+		ID: invoiceID, ProviderRef: nullStr(providerRef),
+	})
 }
 
 func (r *Repo) ListInvoices(ctx context.Context, storeID string, limit, offset int32) ([]domain.Invoice, int64, error) {
@@ -113,6 +165,17 @@ func (r *Repo) ListInvoices(ctx context.Context, storeID string, limit, offset i
 		out = append(out, toInvoice(row))
 	}
 	return out, total, nil
+}
+
+// MarkInvoiceTerminal closes out an invoice ElProof reports as genuinely done WITHOUT payment
+// (expired/failed/refund) — status must be one of subscription_invoices' own enum values
+// ('expired' | 'failed'); guarded by status='pending' at the SQL level (see the query) so this
+// can never downgrade an invoice a concurrent webhook/reconciler tick already marked 'paid'.
+func (r *Repo) MarkInvoiceTerminal(ctx context.Context, invoiceID, status string) error {
+	_, err := r.q.MarkSubscriptionInvoiceTerminal(ctx, sqlcgen.MarkSubscriptionInvoiceTerminalParams{
+		Status: sqlcgen.SubscriptionInvoicesStatus(status), ID: invoiceID,
+	})
+	return err
 }
 
 // MarkInvoicePaidAndExtend is the ONE atomic operation triggered by payment confirmation: mark

@@ -22,45 +22,16 @@ func (q *Queries) CountPaymentGatewayConfig(ctx context.Context) (int64, error) 
 }
 
 const createChargeApp = `-- name: CreateChargeApp :exec
-INSERT INTO payment_charge_apps (order_ref, app_id, provider_ref) VALUES (?, ?, ?)
+INSERT INTO payment_charge_apps (order_ref, app_id) VALUES (?, ?)
 `
 
 type CreateChargeAppParams struct {
-	OrderRef    string         `json:"orderRef"`
-	AppID       string         `json:"appId"`
-	ProviderRef sql.NullString `json:"providerRef"`
+	OrderRef string `json:"orderRef"`
+	AppID    string `json:"appId"`
 }
 
 func (q *Queries) CreateChargeApp(ctx context.Context, arg CreateChargeAppParams) error {
-	_, err := q.db.ExecContext(ctx, createChargeApp, arg.OrderRef, arg.AppID, arg.ProviderRef)
-	return err
-}
-
-const createPaymentClient = `-- name: CreatePaymentClient :exec
-INSERT INTO payment_clients (id, app_id, name, secret_hash, secret_enc, kind, callback_url, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-`
-
-type CreatePaymentClientParams struct {
-	ID          string             `json:"id"`
-	AppID       string             `json:"appId"`
-	Name        string             `json:"name"`
-	SecretHash  sql.NullString     `json:"secretHash"`
-	SecretEnc   sql.NullString     `json:"secretEnc"`
-	Kind        PaymentClientsKind `json:"kind"`
-	CallbackUrl sql.NullString     `json:"callbackUrl"`
-}
-
-func (q *Queries) CreatePaymentClient(ctx context.Context, arg CreatePaymentClientParams) error {
-	_, err := q.db.ExecContext(ctx, createPaymentClient,
-		arg.ID,
-		arg.AppID,
-		arg.Name,
-		arg.SecretHash,
-		arg.SecretEnc,
-		arg.Kind,
-		arg.CallbackUrl,
-	)
+	_, err := q.db.ExecContext(ctx, createChargeApp, arg.OrderRef, arg.AppID)
 	return err
 }
 
@@ -75,83 +46,8 @@ func (q *Queries) GetChargeApp(ctx context.Context, orderRef string) (string, er
 	return app_id, err
 }
 
-const getChargeAppByOrderRef = `-- name: GetChargeAppByOrderRef :one
-SELECT app_id, provider_ref FROM payment_charge_apps WHERE order_ref = ? LIMIT 1
-`
-
-type GetChargeAppByOrderRefRow struct {
-	AppID       string         `json:"appId"`
-	ProviderRef sql.NullString `json:"providerRef"`
-}
-
-// Termasuk provider_ref (§10.2 EB2) — dipakai endpoint status eksternal untuk menerjemahkan
-// orderRef milik pemanggil ke providerRef yang CheckStatus benar-benar butuhkan.
-func (q *Queries) GetChargeAppByOrderRef(ctx context.Context, orderRef string) (GetChargeAppByOrderRefRow, error) {
-	row := q.db.QueryRowContext(ctx, getChargeAppByOrderRef, orderRef)
-	var i GetChargeAppByOrderRefRow
-	err := row.Scan(&i.AppID, &i.ProviderRef)
-	return i, err
-}
-
-const getPaymentClientByAppID = `-- name: GetPaymentClientByAppID :one
-SELECT id, app_id, name, secret_hash, kind, callback_url, status, created_at, updated_at, secret_enc FROM payment_clients WHERE app_id = ? LIMIT 1
-`
-
-func (q *Queries) GetPaymentClientByAppID(ctx context.Context, appID string) (PaymentClient, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentClientByAppID, appID)
-	var i PaymentClient
-	err := row.Scan(
-		&i.ID,
-		&i.AppID,
-		&i.Name,
-		&i.SecretHash,
-		&i.Kind,
-		&i.CallbackUrl,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.SecretEnc,
-	)
-	return i, err
-}
-
-const getPaymentClientByID = `-- name: GetPaymentClientByID :one
-SELECT id, app_id, name, secret_hash, kind, callback_url, status, created_at, updated_at, secret_enc FROM payment_clients WHERE id = ? LIMIT 1
-`
-
-func (q *Queries) GetPaymentClientByID(ctx context.Context, id string) (PaymentClient, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentClientByID, id)
-	var i PaymentClient
-	err := row.Scan(
-		&i.ID,
-		&i.AppID,
-		&i.Name,
-		&i.SecretHash,
-		&i.Kind,
-		&i.CallbackUrl,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.SecretEnc,
-	)
-	return i, err
-}
-
-const getPaymentClientSecretEnc = `-- name: GetPaymentClientSecretEnc :one
-SELECT secret_enc FROM payment_clients WHERE id = ? AND kind = 'external' LIMIT 1
-`
-
-// Dipakai HANYA saat menandatangani relay webhook keluar (§10.1.6/§10.1.10) — bukan untuk
-// otentikasi masuk (itu pakai secret_hash via GetPaymentClientByAppID/ByID + bcrypt compare).
-func (q *Queries) GetPaymentClientSecretEnc(ctx context.Context, id string) (sql.NullString, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentClientSecretEnc, id)
-	var secret_enc sql.NullString
-	err := row.Scan(&secret_enc)
-	return secret_enc, err
-}
-
 const getPaymentGatewayConfig = `-- name: GetPaymentGatewayConfig :one
-SELECT id, provider, sandbox, tripay_api_key_enc, tripay_private_key_enc, tripay_merchant_code_enc, tripay_method, midtrans_server_key_enc, created_at, updated_at FROM payment_gateway_config LIMIT 1
+SELECT id, provider, sandbox, tripay_api_key_enc, tripay_private_key_enc, tripay_merchant_code_enc, tripay_method, midtrans_server_key_enc, created_at, updated_at, elproof_app_id, elproof_secret_enc, elproof_base_url FROM payment_gateway_config LIMIT 1
 `
 
 func (q *Queries) GetPaymentGatewayConfig(ctx context.Context) (PaymentGatewayConfig, error) {
@@ -168,6 +64,9 @@ func (q *Queries) GetPaymentGatewayConfig(ctx context.Context) (PaymentGatewayCo
 		&i.MidtransServerKeyEnc,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ElproofAppID,
+		&i.ElproofSecretEnc,
+		&i.ElproofBaseUrl,
 	)
 	return i, err
 }
@@ -204,83 +103,11 @@ func (q *Queries) InsertPaymentGatewayConfig(ctx context.Context, arg InsertPaym
 	return err
 }
 
-const listPaymentClients = `-- name: ListPaymentClients :many
-SELECT id, app_id, name, secret_hash, kind, callback_url, status, created_at, updated_at, secret_enc FROM payment_clients ORDER BY created_at ASC
-`
-
-func (q *Queries) ListPaymentClients(ctx context.Context) ([]PaymentClient, error) {
-	rows, err := q.db.QueryContext(ctx, listPaymentClients)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PaymentClient{}
-	for rows.Next() {
-		var i PaymentClient
-		if err := rows.Scan(
-			&i.ID,
-			&i.AppID,
-			&i.Name,
-			&i.SecretHash,
-			&i.Kind,
-			&i.CallbackUrl,
-			&i.Status,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.SecretEnc,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const setPaymentClientSecret = `-- name: SetPaymentClientSecret :execrows
-UPDATE payment_clients SET secret_hash = ?, secret_enc = ? WHERE id = ? AND kind = 'external'
-`
-
-type SetPaymentClientSecretParams struct {
-	SecretHash sql.NullString `json:"secretHash"`
-	SecretEnc  sql.NullString `json:"secretEnc"`
-	ID         string         `json:"id"`
-}
-
-func (q *Queries) SetPaymentClientSecret(ctx context.Context, arg SetPaymentClientSecretParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setPaymentClientSecret, arg.SecretHash, arg.SecretEnc, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const setPaymentClientStatus = `-- name: SetPaymentClientStatus :execrows
-UPDATE payment_clients SET status = ? WHERE id = ? AND kind = 'external'
-`
-
-type SetPaymentClientStatusParams struct {
-	Status PaymentClientsStatus `json:"status"`
-	ID     string               `json:"id"`
-}
-
-func (q *Queries) SetPaymentClientStatus(ctx context.Context, arg SetPaymentClientStatusParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setPaymentClientStatus, arg.Status, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const updatePaymentGatewayConfig = `-- name: UpdatePaymentGatewayConfig :exec
 UPDATE payment_gateway_config SET
   provider = ?, sandbox = ?, tripay_api_key_enc = ?, tripay_private_key_enc = ?,
-  tripay_merchant_code_enc = ?, tripay_method = ?, midtrans_server_key_enc = ?
+  tripay_merchant_code_enc = ?, tripay_method = ?, midtrans_server_key_enc = ?,
+  elproof_app_id = ?, elproof_secret_enc = ?, elproof_base_url = ?
 WHERE id = ?
 `
 
@@ -292,9 +119,14 @@ type UpdatePaymentGatewayConfigParams struct {
 	TripayMerchantCodeEnc sql.NullString `json:"tripayMerchantCodeEnc"`
 	TripayMethod          string         `json:"tripayMethod"`
 	MidtransServerKeyEnc  sql.NullString `json:"midtransServerKeyEnc"`
+	ElproofAppID          sql.NullString `json:"elproofAppId"`
+	ElproofSecretEnc      sql.NullString `json:"elproofSecretEnc"`
+	ElproofBaseUrl        string         `json:"elproofBaseUrl"`
 	ID                    string         `json:"id"`
 }
 
+// ElProof (elproof_*) is a SEPARATE, always-on wallet used only for subscription billing
+// (paymentclient.AppSubscribe) — not part of the Provider switch above (§11).
 func (q *Queries) UpdatePaymentGatewayConfig(ctx context.Context, arg UpdatePaymentGatewayConfigParams) error {
 	_, err := q.db.ExecContext(ctx, updatePaymentGatewayConfig,
 		arg.Provider,
@@ -304,6 +136,9 @@ func (q *Queries) UpdatePaymentGatewayConfig(ctx context.Context, arg UpdatePaym
 		arg.TripayMerchantCodeEnc,
 		arg.TripayMethod,
 		arg.MidtransServerKeyEnc,
+		arg.ElproofAppID,
+		arg.ElproofSecretEnc,
+		arg.ElproofBaseUrl,
 		arg.ID,
 	)
 	return err

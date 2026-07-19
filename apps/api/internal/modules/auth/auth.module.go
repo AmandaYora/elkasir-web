@@ -22,8 +22,8 @@ type Module struct {
 }
 
 // New assembles the auth module: token manager → service → middleware → handler.
-func New(q *sqlcgen.Queries, secret string, accessTTL, refreshTTL, appTokenTTL time.Duration) *Module {
-	mgr := infrastructure.NewManager(secret, accessTTL, refreshTTL, appTokenTTL)
+func New(q *sqlcgen.Queries, secret string, accessTTL, refreshTTL time.Duration) *Module {
+	mgr := infrastructure.NewManager(secret, accessTTL, refreshTTL)
 	svc := application.NewService(q, mgr)
 	mw := infrastructure.NewMiddleware(mgr, q)
 	return &Module{

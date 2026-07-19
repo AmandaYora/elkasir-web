@@ -11,16 +11,16 @@ import (
 )
 
 type Config struct {
-	Env                   string
-	Addr                  string
-	CORSAllowedOrigins    []string
-	PublicBaseURL         string
-	DB                    DB
-	JWT                   JWT
-	Payment               Payment
-	Storage               ObjectStorage
-	SMTP                  SMTP
-	ConfigEncryptionKey   string // PLAN.md §9.1.2 — the one secret that stays in .env
+	Env                 string
+	Addr                string
+	CORSAllowedOrigins  []string
+	PublicBaseURL       string
+	DB                  DB
+	JWT                 JWT
+	Payment             Payment
+	Storage             ObjectStorage
+	SMTP                SMTP
+	ConfigEncryptionKey string // PLAN.md §9.1.2 — the one secret that stays in .env
 }
 
 type DB struct {
@@ -31,11 +31,6 @@ type JWT struct {
 	Secret     string
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
-	// AppTokenTTL is the access-token lifetime for ActorApp (external payment API, PLAN.md
-	// §10.1.3) — deliberately separate from AccessTTL: no refresh token is ever issued for this
-	// actor, so re-exchanging via client-credentials is the whole story, and a machine caller
-	// tolerates a different TTL policy than a human session.
-	AppTokenTTL time.Duration
 }
 
 // Payment adalah konfigurasi pembayaran QRIS yang PROVIDER-AGNOSTIC di permukaan: satu
@@ -128,10 +123,9 @@ func Load() (Config, error) {
 			DSN: buildDSN(),
 		},
 		JWT: JWT{
-			Secret:      os.Getenv("JWT_SECRET"),
-			AccessTTL:   getDuration("JWT_ACCESS_TTL", 15*time.Minute),
-			RefreshTTL:  getDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
-			AppTokenTTL: getDuration("JWT_APP_TOKEN_TTL", 1*time.Hour),
+			Secret:     os.Getenv("JWT_SECRET"),
+			AccessTTL:  getDuration("JWT_ACCESS_TTL", 15*time.Minute),
+			RefreshTTL: getDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
 		},
 		Payment: loadPayment(),
 		Storage: ObjectStorage{

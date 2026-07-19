@@ -869,6 +869,7 @@ type SubscriptionInvoicesProvider string
 const (
 	SubscriptionInvoicesProviderTripay   SubscriptionInvoicesProvider = "tripay"
 	SubscriptionInvoicesProviderMidtrans SubscriptionInvoicesProvider = "midtrans"
+	SubscriptionInvoicesProviderElproof  SubscriptionInvoicesProvider = "elproof"
 )
 
 func (e *SubscriptionInvoicesProvider) Scan(src interface{}) error {
@@ -1226,10 +1227,9 @@ type Payment struct {
 }
 
 type PaymentChargeApp struct {
-	OrderRef    string         `json:"orderRef"`
-	AppID       string         `json:"appId"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	ProviderRef sql.NullString `json:"providerRef"`
+	OrderRef  string    `json:"orderRef"`
+	AppID     string    `json:"appId"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type PaymentClient struct {
@@ -1242,7 +1242,6 @@ type PaymentClient struct {
 	Status      PaymentClientsStatus `json:"status"`
 	CreatedAt   time.Time            `json:"createdAt"`
 	UpdatedAt   time.Time            `json:"updatedAt"`
-	SecretEnc   sql.NullString       `json:"secretEnc"`
 }
 
 type PaymentGatewayConfig struct {
@@ -1256,6 +1255,9 @@ type PaymentGatewayConfig struct {
 	MidtransServerKeyEnc  sql.NullString `json:"midtransServerKeyEnc"`
 	CreatedAt             time.Time      `json:"createdAt"`
 	UpdatedAt             time.Time      `json:"updatedAt"`
+	ElproofAppID          sql.NullString `json:"elproofAppId"`
+	ElproofSecretEnc      sql.NullString `json:"elproofSecretEnc"`
+	ElproofBaseUrl        string         `json:"elproofBaseUrl"`
 }
 
 type PlatformUser struct {
@@ -1415,17 +1417,19 @@ type StoreSubscription struct {
 }
 
 type SubscriptionInvoice struct {
-	ID          string                       `json:"id"`
-	StoreID     string                       `json:"storeId"`
-	PlanID      string                       `json:"planId"`
-	Amount      int64                        `json:"amount"`
-	Status      SubscriptionInvoicesStatus   `json:"status"`
-	Provider    SubscriptionInvoicesProvider `json:"provider"`
-	ProviderRef sql.NullString               `json:"providerRef"`
-	PeriodStart sql.NullTime                 `json:"periodStart"`
-	PeriodEnd   sql.NullTime                 `json:"periodEnd"`
-	CreatedAt   time.Time                    `json:"createdAt"`
-	UpdatedAt   time.Time                    `json:"updatedAt"`
+	ID             string                       `json:"id"`
+	StoreID        string                       `json:"storeId"`
+	PlanID         string                       `json:"planId"`
+	Amount         int64                        `json:"amount"`
+	Status         SubscriptionInvoicesStatus   `json:"status"`
+	ProviderRef    sql.NullString               `json:"providerRef"`
+	PeriodStart    sql.NullTime                 `json:"periodStart"`
+	PeriodEnd      sql.NullTime                 `json:"periodEnd"`
+	CreatedAt      time.Time                    `json:"createdAt"`
+	UpdatedAt      time.Time                    `json:"updatedAt"`
+	Provider       SubscriptionInvoicesProvider `json:"provider"`
+	StoreIDShadow  sql.NullString               `json:"storeIdShadow"`
+	PendingLockKey sql.NullString               `json:"pendingLockKey"`
 }
 
 type SubscriptionPlan struct {

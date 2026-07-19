@@ -1,0 +1,2 @@
+ALTER TABLE subscription_invoices
+  DROP INDEX idx_subscription_invoices_status_provider_created;

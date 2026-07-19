@@ -7,7 +7,6 @@ import {
   Layers,
   Users,
   Settings2,
-  Webhook,
 } from "lucide-react";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
 import type { NavGroup } from "@/shared/layouts/AppSidebar";
@@ -41,7 +40,6 @@ export const platformNavGroups: NavGroup[] = [
       { title: "Paket", to: ROUTE_PATHS.platformPlans, icon: Layers },
       { title: "User Platform", to: ROUTE_PATHS.platformUsers, icon: Users },
       { title: "Konfigurasi Pembayaran", to: ROUTE_PATHS.platformPaymentConfig, icon: Settings2 },
-      { title: "Aplikasi Terdaftar", to: ROUTE_PATHS.platformPaymentClients, icon: Webhook },
     ],
   },
 ];

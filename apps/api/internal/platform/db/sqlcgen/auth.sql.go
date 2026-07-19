@@ -133,46 +133,6 @@ func (q *Queries) GetFirstStore(ctx context.Context) (Store, error) {
 	return i, err
 }
 
-const getPaymentClientForAppLogin = `-- name: GetPaymentClientForAppLogin :one
-SELECT id, app_id, secret_hash, status FROM payment_clients WHERE app_id = ? AND kind = 'external' LIMIT 1
-`
-
-type GetPaymentClientForAppLoginRow struct {
-	ID         string               `json:"id"`
-	AppID      string               `json:"appId"`
-	SecretHash sql.NullString       `json:"secretHash"`
-	Status     PaymentClientsStatus `json:"status"`
-}
-
-// Bacaan langsung ke `payment_clients` — pola yang SAMA persis dengan GetPlatformUserByEmail di
-// atas (auth punya query login-lookup sendiri ke tabel identitas modul lain; CRUD tetap milik
-// `payment`, bukan `auth`). Dipakai HANYA untuk POST /auth/app/token (PLAN.md §10.1.2/§10.1.3).
-func (q *Queries) GetPaymentClientForAppLogin(ctx context.Context, appID string) (GetPaymentClientForAppLoginRow, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentClientForAppLogin, appID)
-	var i GetPaymentClientForAppLoginRow
-	err := row.Scan(
-		&i.ID,
-		&i.AppID,
-		&i.SecretHash,
-		&i.Status,
-	)
-	return i, err
-}
-
-const getPaymentClientStatus = `-- name: GetPaymentClientStatus :one
-SELECT status FROM payment_clients WHERE id = ? LIMIT 1
-`
-
-// Bacaan langsung ke `payment_clients.status` — pengecualian shared-kernel yang sama classnya
-// dengan GetStoreStatus di atas; dipakai utk cek status LIVE per-request utk ActorApp
-// (PLAN.md §10.1.4), bukan kepemilikan tabel oleh `auth`.
-func (q *Queries) GetPaymentClientStatus(ctx context.Context, id string) (PaymentClientsStatus, error) {
-	row := q.db.QueryRowContext(ctx, getPaymentClientStatus, id)
-	var status PaymentClientsStatus
-	err := row.Scan(&status)
-	return status, err
-}
-
 const getPlatformUserByEmail = `-- name: GetPlatformUserByEmail :one
 SELECT id, name, email, password_hash, status, created_at, updated_at FROM platform_users WHERE email = ? LIMIT 1
 `

@@ -137,29 +137,6 @@ func (s *Service) LoginStaff(ctx context.Context, username, password string) (do
 	return pair, domain.Identity{ID: st.ID, Name: st.Name, Email: st.Email.String, Role: string(st.Role), StoreID: st.StoreID, Actor: authcontract.ActorStaff}, nil
 }
 
-// LoginApp validates an external payment API caller's credentials (PLAN.md §10.1.2/§10.1.3) and
-// issues a SHORT-LIVED access token — deliberately NOT a token pair: no refresh token is ever
-// issued for ActorApp, so this returns just the access token + its TTL. Same generic-error
-// discipline as every other login path (don't leak whether an app_id exists at all).
-func (s *Service) LoginApp(ctx context.Context, appID, secret string) (accessToken string, expiresIn int64, err error) {
-	c, err := s.q.GetPaymentClientForAppLogin(ctx, strings.TrimSpace(appID))
-	if err != nil {
-		return "", 0, invalidCreds()
-	}
-	if c.Status != sqlcgen.PaymentClientsStatusActive {
-		return "", 0, inactiveAccount()
-	}
-	if !c.SecretHash.Valid || !security.VerifyPassword(c.SecretHash.String, secret) {
-		return "", 0, invalidCreds()
-	}
-	p := authcontract.Principal{SubjectID: c.ID, Actor: authcontract.ActorApp}
-	access, _, err := s.mgr.IssueAccessWithTTL(p, s.mgr.AppTokenTTL())
-	if err != nil {
-		return "", 0, err
-	}
-	return access, int64(s.mgr.AppTokenTTL().Seconds()), nil
-}
-
 // LoginPlatform validates superadmin (platform operator) credentials and issues a token pair.
 // Platform users are NOT scoped to any store — Principal.StoreID stays "".
 func (s *Service) LoginPlatform(ctx context.Context, email, password string) (domain.TokenPair, domain.Identity, error) {

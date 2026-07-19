@@ -37,9 +37,6 @@ type gateway interface {
 	createCharge(ctx context.Context, orderRef string, amount int64, channel paymentclient.Channel, opts paymentclient.ChannelOptions) (chargeResult, error)
 	// quoteFee mengembalikan biaya gateway QRIS untuk `amount` (rupiah) yang akan ditagih.
 	quoteFee(ctx context.Context, amount int64) (int64, error)
-	// listChannels melaporkan kanal yang aktif di akun gateway saat ini (§9.1.8) — live dari
-	// provider, bukan daftar statis dalam kode.
-	listChannels(ctx context.Context) ([]paymentclient.ChannelInfo, error)
 	// checkStatus adalah pull-based status check, independen dari webhook (§9.1.8).
 	checkStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error)
 	verifyWebhook(header http.Header, body []byte) bool

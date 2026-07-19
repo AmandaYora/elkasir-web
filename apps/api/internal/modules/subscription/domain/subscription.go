@@ -6,8 +6,15 @@
 package domain
 
 import (
+	"errors"
 	"time"
 )
+
+// ErrInvoiceAlreadyPending signals the DB-level "one pending invoice per store" constraint
+// (subscription_invoices.pending_lock_key, migration 000025) was violated — a second checkout
+// landed while one invoice was already unresolved for the store. See
+// infrastructure.Repo.CreateInvoice and application.Service.Checkout.
+var ErrInvoiceAlreadyPending = errors.New("subscription: toko sudah memiliki invoice pending")
 
 // Plan is a subscription plan — reference/catalog data, managed by the platform (superadmin).
 // RenewalOnly plans (e.g. the "Premium Contributor" legacy-backfill plan) can only ever be
@@ -47,4 +54,3 @@ type Invoice struct {
 	PeriodEnd   *time.Time
 	CreatedAt   time.Time
 }
-

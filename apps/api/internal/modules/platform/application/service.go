@@ -244,19 +244,3 @@ func (s *Service) GetPaymentConfig(ctx context.Context) (paymentclient.GatewayCo
 func (s *Service) UpdatePaymentConfig(ctx context.Context, in paymentclient.UpdateGatewayConfigInput) (paymentclient.GatewayConfig, error) {
 	return s.payments.UpdateConfig(ctx, in)
 }
-
-func (s *Service) ListPaymentApps(ctx context.Context) ([]paymentclient.AppInfo, error) {
-	return s.payments.ListApps(ctx)
-}
-
-func (s *Service) CreatePaymentApp(ctx context.Context, in paymentclient.CreateAppInput) (paymentclient.CreateAppResult, error) {
-	return s.payments.CreateApp(ctx, in)
-}
-
-func (s *Service) ResetPaymentAppSecret(ctx context.Context, id string) (string, error) {
-	return s.payments.ResetAppSecret(ctx, id)
-}
-
-func (s *Service) SetPaymentAppStatus(ctx context.Context, id, status string) error {
-	return s.payments.SetAppStatus(ctx, id, status)
-}

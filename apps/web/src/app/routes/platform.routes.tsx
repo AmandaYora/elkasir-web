@@ -21,9 +21,6 @@ const PlatformUsersPage = lazy(() => import("@/modules/platform/pages/PlatformUs
 const PlatformPaymentConfigPage = lazy(
   () => import("@/modules/platform/pages/PlatformPaymentConfigPage"),
 );
-const PlatformPaymentClientsPage = lazy(
-  () => import("@/modules/platform/pages/PlatformPaymentClientsPage"),
-);
 
 export const platformRoutes: RouteObject[] = [
   {
@@ -44,7 +41,6 @@ export const platformRoutes: RouteObject[] = [
       { path: ROUTE_PATHS.platformPlans, element: <PlatformPlansPage /> },
       { path: ROUTE_PATHS.platformUsers, element: <PlatformUsersPage /> },
       { path: ROUTE_PATHS.platformPaymentConfig, element: <PlatformPaymentConfigPage /> },
-      { path: ROUTE_PATHS.platformPaymentClients, element: <PlatformPaymentClientsPage /> },
     ],
   },
 ];

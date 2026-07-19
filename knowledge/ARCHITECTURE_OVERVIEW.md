@@ -60,15 +60,45 @@ modules/product/
 ## Cross-module flows (orchestration)
 
 Atomic cross-module flows use a **Unit-of-Work** (`internal/platform/uow`) so multiple modules'
-writes share one DB transaction. Two orchestrators do this:
+writes share one DB transaction. Orchestrators:
 
 - **Cashier transaction** (`transaction`): check stock + record sale + decrement stock + update shift
   totals via `productclient`, `shiftclient`, `salesclient`.
 - **Self-order checkout** (`selforder`): orchestrates `productclient`, `salesclient`, `shiftclient`,
   `tableclient`, `paymentclient`.
+- **Subscription checkout** (`subscription`): creates a QRIS charge via `paymentclient` tagged
+  with the `ELKASIR-SUBSCRIBE` app id — a separate business ledger from selforder's, even though
+  both go through the same gateway.
+- **Registry-driven webhook dispatch** (`payment`, Part 2): an incoming gateway callback resolves
+  its `order_ref` to an `app_id` via a thin dispatch index, then either calls a registered
+  in-process Go consumer directly (`kind=internal` — `selforder`/`subscription`) or fire-and-forgets
+  a signed HTTP relay to an external app's `callback_url` (`kind=external`, Part 3).
+- **Withdrawal claim/complete** (`withdrawal`): not UoW-based (both writes stay within the
+  `withdrawal` module's own table) — instead uses an atomic conditional `UPDATE ... WHERE
+  status=<expected>` (check rows-affected) so a concurrent double-claim/double-complete is
+  impossible at the DB level, without needing a transaction across modules.
+- **Tenant provisioning** (`platform`, via `bootstrap.ProvisionTenant`): store + default settings
+  + first owner admin account, one transaction — the only way a new tenant is onboarded.
 
 Each contract client is tx-aware: when invoked inside a UoW, its queries run on the shared
 transaction (`uow.Q(ctx)`).
+
+## Access-gate middleware (auth)
+
+Beyond identity (`Authenticate`) and actor/role checks, `auth`'s middleware enforces two more
+gates on **every** authenticated request, computed live (no caching):
+
+- **Tenant suspension** (`stores.status`) — rejects `403` for `admin`/`staff` principals whose
+  store is suspended. `platform`/`app` principals are exempt (no `store_id`).
+- **Subscription gate** (`stores` via `subscriptionclient.Current`) — a store with no active
+  package fully blocks `staff`, and restricts `admin` to an allow-listed set of routes, rejecting
+  everything else `402 Payment Required` (distinct from `403` so the frontend can redirect
+  instead of logging out).
+
+Both checks require `auth` to depend on another module's contract client — wired via a
+post-construction **setter**, not a constructor param, to avoid a circular dependency (`auth`
+needs to exist before `subscription` can construct, but `subscription` needs `auth`'s middleware
+to protect its own routes).
 
 ## Request/data flow
 

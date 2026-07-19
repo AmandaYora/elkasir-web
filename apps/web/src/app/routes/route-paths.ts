@@ -26,7 +26,6 @@ export const ROUTE_PATHS = {
   platformPlans: "/platform/plans",
   platformUsers: "/platform/users",
   platformPaymentConfig: "/platform/payment-config",
-  platformPaymentClients: "/platform/payment-clients",
   products: "/products",
   categories: "/categories",
   transactions: "/transactions",

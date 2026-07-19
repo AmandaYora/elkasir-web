@@ -58,18 +58,20 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		UoW:     uow.New(pool),
 		Router:  httpserver.NewRouter(cfg),
 	}
-	a.routes()
+	a.routes(ctx)
 	return a, nil
 }
 
 // routes mounts health (root) + all business modules under /api/v1 + the embedded SPA
-// (catch-all at root, registered last).
-func (a *App) routes() {
+// (catch-all at root, registered last). ctx is the process's root/shutdown context (from
+// signal.NotifyContext in cmd/api/main.go) — passed through so background loops started here
+// (e.g. subscription's ElProof reconciler) share the server's own lifetime.
+func (a *App) routes(ctx context.Context) {
 	// Health/liveness at ROOT — for infra probes & container healthchecks.
 	httpserver.RegisterHealth(a.Router, a.Pool)
 
 	// Core auth module — provides the Authenticator other modules consume.
-	authMod := auth.New(a.Queries, a.Cfg.JWT.Secret, a.Cfg.JWT.AccessTTL, a.Cfg.JWT.RefreshTTL, a.Cfg.JWT.AppTokenTTL)
+	authMod := auth.New(a.Queries, a.Cfg.JWT.Secret, a.Cfg.JWT.AccessTTL, a.Cfg.JWT.RefreshTTL)
 	mw := authMod.Middleware
 
 	// Staff is a provider too: it exposes the supervisor-PIN contract consumed by the shift &
@@ -106,6 +108,10 @@ func (a *App) routes() {
 	// Wired here (not as an auth.New constructor param) to avoid a construction-order cycle —
 	// subscription.New itself needs authMod's Middleware. See PLAN.md §1a/§3 (Phase B1.5).
 	authMod.SetSubscriptionClient(subMod.Client)
+	// ElProof status-check reconciler (PLAN.md §11 Part C) — subscription billing now depends on
+	// a real cross-server webhook relay from ElProof (best-effort, single attempt), unlike the
+	// old in-process dispatch which never needed a polling fallback.
+	subMod.StartReconciler(ctx)
 
 	// Register the two known internal webhook consumers (PLAN.md §9.1.4/§9.1.5, Part 2) —
 	// replaces the old "sub_"-prefix sniffing that used to live in internal/app/webhook.go.

@@ -121,15 +121,6 @@ func (g *midtransGateway) createCharge(ctx context.Context, orderRef string, amo
 	}, nil
 }
 
-// listChannels: hanya QRIS diketahui aktif untuk Midtrans dalam implementasi ini (lihat
-// createCharge di atas) — bukan daftar lengkap kanal yang Midtrans sendiri dukung.
-func (g *midtransGateway) listChannels(_ context.Context) ([]paymentclient.ChannelInfo, error) {
-	if !g.enabled() {
-		return nil, nil
-	}
-	return []paymentclient.ChannelInfo{{Channel: paymentclient.ChannelQRIS, Code: "qris", Name: "QRIS", Active: true}}, nil
-}
-
 // checkStatus memanggil GET /v2/{order_id}/status — pull-based, independen webhook.
 func (g *midtransGateway) checkStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/v2/"+url.PathEscape(providerRef)+"/status", nil)

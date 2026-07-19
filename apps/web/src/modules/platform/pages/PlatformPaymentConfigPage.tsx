@@ -36,6 +36,12 @@ export default function PlatformPaymentConfigPage() {
   const [tripayPrivateKey, setTripayPrivateKey] = useState<string | undefined>(undefined);
   const [midtransServerKey, setMidtransServerKey] = useState<string | undefined>(undefined);
 
+  // ElProof (PLAN.md §11) — dompet TERPISAH, hanya untuk billing subscription tenant; selalu
+  // aktif berdampingan dengan Provider di atas, bukan bagian dari pilihan Tripay/Midtrans.
+  const [elproofAppId, setElproofAppId] = useState<string | undefined>(undefined);
+  const [elproofSecret, setElproofSecret] = useState<string | undefined>(undefined);
+  const [elproofBaseUrl, setElproofBaseUrl] = useState("");
+
   const load = () => {
     setLoading(true);
     platformService
@@ -49,6 +55,9 @@ export default function PlatformPaymentConfigPage() {
         setTripayApiKey(undefined);
         setTripayPrivateKey(undefined);
         setMidtransServerKey(undefined);
+        setElproofAppId(undefined);
+        setElproofSecret(undefined);
+        setElproofBaseUrl(c.elproofBaseUrl);
       })
       .catch(() => toast.error("Gagal memuat konfigurasi pembayaran. Coba lagi."))
       .finally(() => setLoading(false));
@@ -67,11 +76,16 @@ export default function PlatformPaymentConfigPage() {
         tripayApiKey,
         tripayPrivateKey,
         midtransServerKey,
+        elproofAppId,
+        elproofSecret,
+        elproofBaseUrl,
       });
       setCfg(updated);
       setTripayApiKey(undefined);
       setTripayPrivateKey(undefined);
       setMidtransServerKey(undefined);
+      setElproofAppId(undefined);
+      setElproofSecret(undefined);
       toast.success("Konfigurasi pembayaran berhasil disimpan");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Gagal menyimpan konfigurasi. Coba lagi.");
@@ -93,8 +107,8 @@ export default function PlatformPaymentConfigPage() {
       <div>
         <h1 className="text-lg font-semibold text-text">Konfigurasi Pembayaran</h1>
         <p className="text-sm text-muted">
-          Satu dompet gateway untuk seluruh aplikasi (self-order, langganan tenant, dan aplikasi
-          terdaftar lainnya) — ganti kredensial di sini tanpa perlu edit server.
+          Dompet Tripay/Midtrans untuk self-order pelanggan, dan (terpisah) kredensial ElProof
+          untuk billing subscription tenant — ganti kredensial di sini tanpa perlu edit server.
         </p>
       </div>
 
@@ -186,6 +200,48 @@ export default function PlatformPaymentConfigPage() {
               value={midtransServerKey ?? ""}
               onChange={(e) => setMidtransServerKey(e.target.value)}
               placeholder={cfg.midtransServerKeyMasked || "Belum diatur"}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>ElProof — Billing Subscription</CardTitle>
+          <CardDescription>
+            Dompet TERPISAH, hanya dipakai untuk tagihan langganan tenant — selalu aktif
+            berdampingan dengan Gateway Aktif di atas (bukan bagian dari pilihan Tripay/Midtrans).
+            Elkasir terdaftar di ElProof sebagai app eksternal "Elkasir-Billing"; appId & secret di
+            bawah didapat dari tim ElProof lewat Platform Console mereka.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="elproofAppId">App ID</Label>
+            <Input
+              id="elproofAppId"
+              value={elproofAppId ?? cfg.elproofAppId}
+              onChange={(e) => setElproofAppId(e.target.value)}
+              placeholder="Elkasir-Billing"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="elproofSecret">Secret</Label>
+            <Input
+              id="elproofSecret"
+              type="password"
+              value={elproofSecret ?? ""}
+              onChange={(e) => setElproofSecret(e.target.value)}
+              placeholder={cfg.elproofSecretMasked || "Belum diatur"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="elproofBaseUrl">Base URL</Label>
+            <Input
+              id="elproofBaseUrl"
+              value={elproofBaseUrl}
+              onChange={(e) => setElproofBaseUrl(e.target.value)}
+              placeholder="https://elproof.elcodelabs.com/api/v1"
             />
           </div>
         </CardContent>

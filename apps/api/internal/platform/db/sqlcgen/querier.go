@@ -29,7 +29,6 @@ type Querier interface {
 	// Ledger pembayaran gateway (tabel `payments`) — dimiliki selforder (satu-satunya pemakai);
 	// module `payment` sendiri sudah tidak menyentuh tabel ini (lihat webhook_events.sql).
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) error
-	CreatePaymentClient(ctx context.Context, arg CreatePaymentClientParams) error
 	CreatePlatformUser(ctx context.Context, arg CreatePlatformUserParams) error
 	CreateProduct(ctx context.Context, arg CreateProductParams) error
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
@@ -37,6 +36,11 @@ type Querier interface {
 	CreateSelfOrderItem(ctx context.Context, arg CreateSelfOrderItemParams) error
 	CreateShift(ctx context.Context, arg CreateShiftParams) error
 	CreateStaff(ctx context.Context, arg CreateStaffParams) error
+	// store_id_shadow is always set equal to store_id (see migration 000025's doc comment for why a
+	// separate column exists at all — an InnoDB restriction on generated columns + ON DELETE CASCADE
+	// FKs, not a real second piece of data). A duplicate-key error on this insert (MySQL error 1062)
+	// means the store already has a pending invoice open — surfaced by the repository as
+	// domain.ErrInvoiceAlreadyPending.
 	CreateSubscriptionInvoice(ctx context.Context, arg CreateSubscriptionInvoiceParams) error
 	CreateSubscriptionPlan(ctx context.Context, arg CreateSubscriptionPlanParams) error
 	CreateTable(ctx context.Context, arg CreateTableParams) error
@@ -65,27 +69,15 @@ type Querier interface {
 	GetCashMovement(ctx context.Context, arg GetCashMovementParams) (CashMovement, error)
 	GetCategory(ctx context.Context, arg GetCategoryParams) (ProductCategory, error)
 	GetChargeApp(ctx context.Context, orderRef string) (string, error)
-	// Termasuk provider_ref (§10.2 EB2) — dipakai endpoint status eksternal untuk menerjemahkan
-	// orderRef milik pemanggil ke providerRef yang CheckStatus benar-benar butuhkan.
-	GetChargeAppByOrderRef(ctx context.Context, orderRef string) (GetChargeAppByOrderRefRow, error)
 	GetFirstStore(ctx context.Context) (Store, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetOpenShift(ctx context.Context, storeID string) (Shift, error)
 	GetPaymentBySelfOrder(ctx context.Context, selfOrderID string) (Payment, error)
-	GetPaymentClientByAppID(ctx context.Context, appID string) (PaymentClient, error)
-	GetPaymentClientByID(ctx context.Context, id string) (PaymentClient, error)
-	// Bacaan langsung ke `payment_clients` — pola yang SAMA persis dengan GetPlatformUserByEmail di
-	// atas (auth punya query login-lookup sendiri ke tabel identitas modul lain; CRUD tetap milik
-	// `payment`, bukan `auth`). Dipakai HANYA untuk POST /auth/app/token (PLAN.md §10.1.2/§10.1.3).
-	GetPaymentClientForAppLogin(ctx context.Context, appID string) (GetPaymentClientForAppLoginRow, error)
-	// Dipakai HANYA saat menandatangani relay webhook keluar (§10.1.6/§10.1.10) — bukan untuk
-	// otentikasi masuk (itu pakai secret_hash via GetPaymentClientByAppID/ByID + bcrypt compare).
-	GetPaymentClientSecretEnc(ctx context.Context, id string) (sql.NullString, error)
-	// Bacaan langsung ke `payment_clients.status` — pengecualian shared-kernel yang sama classnya
-	// dengan GetStoreStatus di atas; dipakai utk cek status LIVE per-request utk ActorApp
-	// (PLAN.md §10.1.4), bukan kepemilikan tabel oleh `auth`.
-	GetPaymentClientStatus(ctx context.Context, id string) (PaymentClientsStatus, error)
 	GetPaymentGatewayConfig(ctx context.Context) (PaymentGatewayConfig, error)
+	// Backs the checkout double-submit guard: a store may only have ONE unresolved invoice open
+	// at a time, regardless of provider. Most-recent first in case more than one somehow exists
+	// (shouldn't, given this guard, but pre-existing data might).
+	GetPendingSubscriptionInvoiceByStore(ctx context.Context, storeID string) (SubscriptionInvoice, error)
 	GetPlatformUser(ctx context.Context, id string) (PlatformUser, error)
 	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
 	GetPlatformUserByID(ctx context.Context, id string) (PlatformUser, error)
@@ -135,7 +127,12 @@ type Querier interface {
 	ListAllWithdrawals(ctx context.Context, arg ListAllWithdrawalsParams) ([]Withdrawal, error)
 	ListCashMovements(ctx context.Context, arg ListCashMovementsParams) ([]CashMovement, error)
 	ListCategories(ctx context.Context, storeID string) ([]ListCategoriesRow, error)
-	ListPaymentClients(ctx context.Context) ([]PaymentClient, error)
+	// Reconciliation poller fallback (PLAN.md §11 Part C) — ElProof's webhook relay is best-effort,
+	// single-attempt; unlike the old in-process dispatch, a lost relay is now a real possibility, so
+	// this backs GET status-check polling for anything still pending. LIMIT bounds each tick to a
+	// fixed-size batch (mirrors ElProof's own reconcileBatchLimit=50 on its sweep) so a large backlog
+	// can't turn one tick into an unbounded burst of outbound requests to ElProof.
+	ListPendingElProofInvoices(ctx context.Context, limit int32) ([]SubscriptionInvoice, error)
 	ListPlatformUsers(ctx context.Context) ([]PlatformUser, error)
 	ListSelfOrderItems(ctx context.Context, selfOrderID string) ([]SelfOrderItem, error)
 	ListShifts(ctx context.Context, arg ListShiftsParams) ([]Shift, error)
@@ -151,6 +148,11 @@ type Querier interface {
 	ListWithdrawals(ctx context.Context, arg ListWithdrawalsParams) ([]Withdrawal, error)
 	MarkSelfOrderPaid(ctx context.Context, arg MarkSelfOrderPaidParams) error
 	MarkSubscriptionInvoicePaid(ctx context.Context, arg MarkSubscriptionInvoicePaidParams) (int64, error)
+	// Closes out an invoice that ElProof reports as genuinely done WITHOUT being paid (expired or
+	// failed/refund — subscription_invoices has no separate 'refund' state, so refund maps to
+	// 'failed', the closest fit) — guarded by status='pending' so a late webhook/reconciler tick
+	// can never downgrade an invoice that already resolved to 'paid'.
+	MarkSubscriptionInvoiceTerminal(ctx context.Context, arg MarkSubscriptionInvoiceTerminalParams) (int64, error)
 	// Tolak (pending|processing -> failed), §2.7. Any active superadmin, no ownership restriction.
 	MarkWithdrawalRejected(ctx context.Context, arg MarkWithdrawalRejectedParams) (int64, error)
 	// Tandai Sukses (processing -> success), §2.7. processed_by must match the claimant — 0 rows
@@ -167,9 +169,12 @@ type Querier interface {
 	ReportStaffPerformance(ctx context.Context, arg ReportStaffPerformanceParams) ([]ReportStaffPerformanceRow, error)
 	ReportTopProducts(ctx context.Context, arg ReportTopProductsParams) ([]ReportTopProductsRow, error)
 	RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) error
-	SetPaymentClientSecret(ctx context.Context, arg SetPaymentClientSecretParams) (int64, error)
-	SetPaymentClientStatus(ctx context.Context, arg SetPaymentClientStatusParams) (int64, error)
 	SetPlatformUserStatus(ctx context.Context, arg SetPlatformUserStatusParams) (int64, error)
+	// Filled in AFTER a successful gateway charge (see subscription/application/service.go Checkout)
+	// — informational only for ElProof invoices (status checks key off the invoice's own ID as
+	// orderRef, never providerRef), kept for ops/support traceability against ElProof's own charge
+	// log. A failure to persist this is logged but never fails checkout.
+	SetSubscriptionInvoiceProviderRef(ctx context.Context, arg SetSubscriptionInvoiceProviderRefParams) error
 	ShiftCashMovementSummary(ctx context.Context, shiftID sql.NullString) (ShiftCashMovementSummaryRow, error)
 	ShiftSalesSummary(ctx context.Context, shiftID sql.NullString) (ShiftSalesSummaryRow, error)
 	// Revenue platform (superadmin): total seluruh invoice LUNAS, LINTAS SEMUA TENANT — sengaja
@@ -196,6 +201,8 @@ type Querier interface {
 	UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) error
 	UpdateAdminUserPassword(ctx context.Context, arg UpdateAdminUserPasswordParams) error
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) error
+	// ElProof (elproof_*) is a SEPARATE, always-on wallet used only for subscription billing
+	// (paymentclient.AppSubscribe) — not part of the Provider switch above (§11).
 	UpdatePaymentGatewayConfig(ctx context.Context, arg UpdatePaymentGatewayConfigParams) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) error
 	UpdatePlatformUserPassword(ctx context.Context, arg UpdatePlatformUserPasswordParams) error

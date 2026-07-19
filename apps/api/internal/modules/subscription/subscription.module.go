@@ -10,6 +10,8 @@ package subscription
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"time"
 
 	authcontract "github.com/elkasir/api/internal/modules/auth/contracts"
 	paymentclient "github.com/elkasir/api/internal/modules/payment/contracts"
@@ -19,6 +21,11 @@ import (
 	"github.com/elkasir/api/internal/modules/subscription/presentation"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 )
+
+// reconcileInterval is how often StartReconciler polls ElProof for pending invoices (PLAN.md
+// §11 Part C) — frequent enough to catch a lost webhook relay promptly, generous enough not to
+// stress ElProof's per-app_id rate limit (60 req/min) even with many pending invoices at once.
+const reconcileInterval = 2 * time.Minute
 
 // Module is the assembled subscription module.
 type Module struct {
@@ -47,4 +54,31 @@ func New(pool *sql.DB, q *sqlcgen.Queries, auth authcontract.Authenticator, paym
 // "sub_"-prefix check.
 func (m *Module) ApplyWebhookEvent(ctx context.Context, ev paymentclient.WebhookEvent) error {
 	return m.svc.ApplyWebhookEvent(ctx, ev)
+}
+
+// StartReconciler launches the ElProof status-check poller (PLAN.md §11 Part C) as a background
+// goroutine, ticking every reconcileInterval until ctx is cancelled. Call once from app.go, after
+// this module is constructed, passing the process's root/shutdown context — same lifetime as the
+// HTTP server itself. A single-process, in-memory ticker is enough here (same "self-hosted, no
+// extra infra" philosophy already established for the payment module's rate limiter).
+func (m *Module) StartReconciler(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(reconcileInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				checked, resolved, err := m.svc.ReconcilePending(ctx)
+				if err != nil {
+					slog.Warn("subscription: reconciliation sweep gagal", "err", err)
+					continue
+				}
+				if checked > 0 {
+					slog.Info("subscription: reconciliation sweep", "checked", checked, "resolved", resolved)
+				}
+			}
+		}
+	}()
 }

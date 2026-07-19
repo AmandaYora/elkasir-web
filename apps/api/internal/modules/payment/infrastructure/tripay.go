@@ -222,50 +222,6 @@ func (g *tripayGateway) quoteFee(ctx context.Context, amount int64) (int64, erro
 	return fr.Data[0].TotalFee.Merchant, nil
 }
 
-// ── Channel listing (§9.1.8) ──────────────────────────────────
-type tpChannelResponse struct {
-	Success bool `json:"success"`
-	Data    []struct {
-		Group  string `json:"group"`
-		Code   string `json:"code"`
-		Name   string `json:"name"`
-		Active bool   `json:"active"`
-	} `json:"data"`
-}
-
-// listChannels memanggil GET /merchant/payment-channel — daftar kanal AKTIF di akun ini saat
-// ini, live dari Tripay. Tidak ada kode bank yang di-hardcode; hasil ini yang menentukan
-// BankCode mana yang valid dipakai di ChannelOptions saat CreateChannelCharge(ChannelVA, ...).
-func (g *tripayGateway) listChannels(ctx context.Context) ([]paymentclient.ChannelInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/merchant/payment-channel", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+g.apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := g.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-
-	var cr tpChannelResponse
-	if err := json.Unmarshal(raw, &cr); err != nil || !cr.Success {
-		return nil, fmt.Errorf("tripay: gagal mengambil daftar channel (HTTP %d)", resp.StatusCode)
-	}
-	out := make([]paymentclient.ChannelInfo, 0, len(cr.Data))
-	for _, d := range cr.Data {
-		ch := paymentclient.ChannelVA
-		if strings.EqualFold(d.Group, "QRIS") || strings.EqualFold(d.Code, "QRIS") {
-			ch = paymentclient.ChannelQRIS
-		}
-		out = append(out, paymentclient.ChannelInfo{Channel: ch, Code: d.Code, Name: d.Name, Active: d.Active})
-	}
-	return out, nil
-}
-
 // ── Status check (§9.1.8) ─────────────────────────────────────
 type tpDetailResponse struct {
 	Success bool `json:"success"`

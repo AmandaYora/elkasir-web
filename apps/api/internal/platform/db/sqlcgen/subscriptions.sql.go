@@ -22,20 +22,26 @@ func (q *Queries) CountSubscriptionInvoices(ctx context.Context, storeID string)
 }
 
 const createSubscriptionInvoice = `-- name: CreateSubscriptionInvoice :exec
-INSERT INTO subscription_invoices (id, store_id, plan_id, amount, status, provider, provider_ref)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO subscription_invoices (id, store_id, plan_id, amount, status, provider, provider_ref, store_id_shadow)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateSubscriptionInvoiceParams struct {
-	ID          string                       `json:"id"`
-	StoreID     string                       `json:"storeId"`
-	PlanID      string                       `json:"planId"`
-	Amount      int64                        `json:"amount"`
-	Status      SubscriptionInvoicesStatus   `json:"status"`
-	Provider    SubscriptionInvoicesProvider `json:"provider"`
-	ProviderRef sql.NullString               `json:"providerRef"`
+	ID            string                       `json:"id"`
+	StoreID       string                       `json:"storeId"`
+	PlanID        string                       `json:"planId"`
+	Amount        int64                        `json:"amount"`
+	Status        SubscriptionInvoicesStatus   `json:"status"`
+	Provider      SubscriptionInvoicesProvider `json:"provider"`
+	ProviderRef   sql.NullString               `json:"providerRef"`
+	StoreIDShadow sql.NullString               `json:"storeIdShadow"`
 }
 
+// store_id_shadow is always set equal to store_id (see migration 000025's doc comment for why a
+// separate column exists at all — an InnoDB restriction on generated columns + ON DELETE CASCADE
+// FKs, not a real second piece of data). A duplicate-key error on this insert (MySQL error 1062)
+// means the store already has a pending invoice open — surfaced by the repository as
+// domain.ErrInvoiceAlreadyPending.
 func (q *Queries) CreateSubscriptionInvoice(ctx context.Context, arg CreateSubscriptionInvoiceParams) error {
 	_, err := q.db.ExecContext(ctx, createSubscriptionInvoice,
 		arg.ID,
@@ -45,6 +51,7 @@ func (q *Queries) CreateSubscriptionInvoice(ctx context.Context, arg CreateSubsc
 		arg.Status,
 		arg.Provider,
 		arg.ProviderRef,
+		arg.StoreIDShadow,
 	)
 	return err
 }
@@ -75,6 +82,34 @@ func (q *Queries) CreateSubscriptionPlan(ctx context.Context, arg CreateSubscrip
 	return err
 }
 
+const getPendingSubscriptionInvoiceByStore = `-- name: GetPendingSubscriptionInvoiceByStore :one
+SELECT id, store_id, plan_id, amount, status, provider_ref, period_start, period_end, created_at, updated_at, provider, store_id_shadow, pending_lock_key FROM subscription_invoices WHERE store_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1
+`
+
+// Backs the checkout double-submit guard: a store may only have ONE unresolved invoice open
+// at a time, regardless of provider. Most-recent first in case more than one somehow exists
+// (shouldn't, given this guard, but pre-existing data might).
+func (q *Queries) GetPendingSubscriptionInvoiceByStore(ctx context.Context, storeID string) (SubscriptionInvoice, error) {
+	row := q.db.QueryRowContext(ctx, getPendingSubscriptionInvoiceByStore, storeID)
+	var i SubscriptionInvoice
+	err := row.Scan(
+		&i.ID,
+		&i.StoreID,
+		&i.PlanID,
+		&i.Amount,
+		&i.Status,
+		&i.ProviderRef,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Provider,
+		&i.StoreIDShadow,
+		&i.PendingLockKey,
+	)
+	return i, err
+}
+
 const getStoreSubscription = `-- name: GetStoreSubscription :one
 SELECT id, store_id, plan_id, status, current_period_start, current_period_end, created_at, updated_at FROM store_subscriptions WHERE store_id = ? LIMIT 1
 `
@@ -96,7 +131,7 @@ func (q *Queries) GetStoreSubscription(ctx context.Context, storeID string) (Sto
 }
 
 const getSubscriptionInvoice = `-- name: GetSubscriptionInvoice :one
-SELECT id, store_id, plan_id, amount, status, provider, provider_ref, period_start, period_end, created_at, updated_at FROM subscription_invoices WHERE id = ? AND store_id = ? LIMIT 1
+SELECT id, store_id, plan_id, amount, status, provider_ref, period_start, period_end, created_at, updated_at, provider, store_id_shadow, pending_lock_key FROM subscription_invoices WHERE id = ? AND store_id = ? LIMIT 1
 `
 
 type GetSubscriptionInvoiceParams struct {
@@ -113,18 +148,20 @@ func (q *Queries) GetSubscriptionInvoice(ctx context.Context, arg GetSubscriptio
 		&i.PlanID,
 		&i.Amount,
 		&i.Status,
-		&i.Provider,
 		&i.ProviderRef,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
+		&i.StoreIDShadow,
+		&i.PendingLockKey,
 	)
 	return i, err
 }
 
 const getSubscriptionInvoiceByID = `-- name: GetSubscriptionInvoiceByID :one
-SELECT id, store_id, plan_id, amount, status, provider, provider_ref, period_start, period_end, created_at, updated_at FROM subscription_invoices WHERE id = ? LIMIT 1
+SELECT id, store_id, plan_id, amount, status, provider_ref, period_start, period_end, created_at, updated_at, provider, store_id_shadow, pending_lock_key FROM subscription_invoices WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetSubscriptionInvoiceByID(ctx context.Context, id string) (SubscriptionInvoice, error) {
@@ -136,12 +173,14 @@ func (q *Queries) GetSubscriptionInvoiceByID(ctx context.Context, id string) (Su
 		&i.PlanID,
 		&i.Amount,
 		&i.Status,
-		&i.Provider,
 		&i.ProviderRef,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Provider,
+		&i.StoreIDShadow,
+		&i.PendingLockKey,
 	)
 	return i, err
 }
@@ -242,8 +281,54 @@ func (q *Queries) ListAllSubscriptionPlans(ctx context.Context) ([]SubscriptionP
 	return items, nil
 }
 
+const listPendingElProofInvoices = `-- name: ListPendingElProofInvoices :many
+SELECT id, store_id, plan_id, amount, status, provider_ref, period_start, period_end, created_at, updated_at, provider, store_id_shadow, pending_lock_key FROM subscription_invoices WHERE status = 'pending' AND provider = 'elproof' ORDER BY created_at ASC LIMIT ?
+`
+
+// Reconciliation poller fallback (PLAN.md §11 Part C) — ElProof's webhook relay is best-effort,
+// single-attempt; unlike the old in-process dispatch, a lost relay is now a real possibility, so
+// this backs GET status-check polling for anything still pending. LIMIT bounds each tick to a
+// fixed-size batch (mirrors ElProof's own reconcileBatchLimit=50 on its sweep) so a large backlog
+// can't turn one tick into an unbounded burst of outbound requests to ElProof.
+func (q *Queries) ListPendingElProofInvoices(ctx context.Context, limit int32) ([]SubscriptionInvoice, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingElProofInvoices, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SubscriptionInvoice{}
+	for rows.Next() {
+		var i SubscriptionInvoice
+		if err := rows.Scan(
+			&i.ID,
+			&i.StoreID,
+			&i.PlanID,
+			&i.Amount,
+			&i.Status,
+			&i.ProviderRef,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Provider,
+			&i.StoreIDShadow,
+			&i.PendingLockKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubscriptionInvoices = `-- name: ListSubscriptionInvoices :many
-SELECT id, store_id, plan_id, amount, status, provider, provider_ref, period_start, period_end, created_at, updated_at FROM subscription_invoices WHERE store_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
+SELECT id, store_id, plan_id, amount, status, provider_ref, period_start, period_end, created_at, updated_at, provider, store_id_shadow, pending_lock_key FROM subscription_invoices WHERE store_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListSubscriptionInvoicesParams struct {
@@ -267,12 +352,14 @@ func (q *Queries) ListSubscriptionInvoices(ctx context.Context, arg ListSubscrip
 			&i.PlanID,
 			&i.Amount,
 			&i.Status,
-			&i.Provider,
 			&i.ProviderRef,
 			&i.PeriodStart,
 			&i.PeriodEnd,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Provider,
+			&i.StoreIDShadow,
+			&i.PendingLockKey,
 		); err != nil {
 			return nil, err
 		}
@@ -304,6 +391,45 @@ func (q *Queries) MarkSubscriptionInvoicePaid(ctx context.Context, arg MarkSubsc
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const markSubscriptionInvoiceTerminal = `-- name: MarkSubscriptionInvoiceTerminal :execrows
+UPDATE subscription_invoices SET status = ? WHERE id = ? AND status = 'pending'
+`
+
+type MarkSubscriptionInvoiceTerminalParams struct {
+	Status SubscriptionInvoicesStatus `json:"status"`
+	ID     string                     `json:"id"`
+}
+
+// Closes out an invoice that ElProof reports as genuinely done WITHOUT being paid (expired or
+// failed/refund — subscription_invoices has no separate 'refund' state, so refund maps to
+// 'failed', the closest fit) — guarded by status='pending' so a late webhook/reconciler tick
+// can never downgrade an invoice that already resolved to 'paid'.
+func (q *Queries) MarkSubscriptionInvoiceTerminal(ctx context.Context, arg MarkSubscriptionInvoiceTerminalParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markSubscriptionInvoiceTerminal, arg.Status, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setSubscriptionInvoiceProviderRef = `-- name: SetSubscriptionInvoiceProviderRef :exec
+UPDATE subscription_invoices SET provider_ref = ? WHERE id = ?
+`
+
+type SetSubscriptionInvoiceProviderRefParams struct {
+	ProviderRef sql.NullString `json:"providerRef"`
+	ID          string         `json:"id"`
+}
+
+// Filled in AFTER a successful gateway charge (see subscription/application/service.go Checkout)
+// — informational only for ElProof invoices (status checks key off the invoice's own ID as
+// orderRef, never providerRef), kept for ops/support traceability against ElProof's own charge
+// log. A failure to persist this is logged but never fails checkout.
+func (q *Queries) SetSubscriptionInvoiceProviderRef(ctx context.Context, arg SetSubscriptionInvoiceProviderRefParams) error {
+	_, err := q.db.ExecContext(ctx, setSubscriptionInvoiceProviderRef, arg.ProviderRef, arg.ID)
+	return err
 }
 
 const sumPaidSubscriptionInvoices = `-- name: SumPaidSubscriptionInvoices :one

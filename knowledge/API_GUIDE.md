@@ -79,22 +79,30 @@ entry, and `message` always holds a human-readable summary.
 
 ## 3. Authentication model
 
-Elkasir uses **JWT access + opaque refresh tokens**, with **two distinct actor types** that must
-never be mixed.
+Elkasir uses **JWT access + opaque refresh tokens**, with **four distinct actor types** that must
+never be mixed — each a fully separate identity domain (separate token storage on the frontend,
+separate session-user shape).
 
 ### 3.1 Actor types
 
-| Actor   | Who                              | Login channel                  | Login field |
-|---------|----------------------------------|--------------------------------|-------------|
-| `admin` | Dashboard / web back-office users | `POST /api/v1/auth/admin/login` | `email`     |
-| `staff` | POS cashiers (Flutter app)        | `POST /api/v1/auth/staff/login` | `username`  |
+| Actor      | Who                                | Login channel                      | Login field | Refresh token? |
+|------------|-------------------------------------|--------------------------------------|--------------|----------------|
+| `admin`    | Dashboard / web back-office users   | `POST /api/v1/auth/admin/login`     | `email`      | yes |
+| `staff`    | POS cashiers (Flutter app)          | `POST /api/v1/auth/staff/login`     | `username`   | yes |
+| `platform` | Superadmin (Konsol Platform)        | `POST /api/v1/auth/platform/login`  | `email`      | yes |
+| `app`      | External payment API caller         | `POST /api/v1/auth/app/token`       | `appId` + `secret` (client-credentials) | **no** — re-exchange instead |
+
+`admin` and `staff` are scoped to a `store_id`; `platform` and `app` are not (neither is tied to
+any tenant).
 
 ### 3.2 Roles
 
-| Actor   | Roles                                 | Notes |
-|---------|---------------------------------------|-------|
-| `admin` | `owner`, `admin`, `manager`, `viewer` | `viewer`/`manager` are read-only on master data; writes require `owner`/`admin`. `owner` only for withdrawals. |
-| `staff` | `cashier`, `supervisor`               | `supervisor` typically approves over-tolerance closes / over-policy discounts. |
+| Actor      | Roles                                  | Notes |
+|------------|------------------------------------------|-------|
+| `admin`    | `owner`, `admin`, `manager`, `viewer`   | `viewer`/`manager` are read-only on master data; writes require `owner`/`admin`. `owner` only for withdrawals and subscription checkout/upgrade. |
+| `staff`    | `cashier`, `supervisor`                | `supervisor` typically approves over-tolerance closes / over-policy discounts. |
+| `platform` | *(none — no tiers)*                    | Every superadmin has equal authority; self-deactivation is blocked at the application layer. |
+| `app`      | *(none)*                               | Identified by `payment_clients.id` (`Principal.SubjectID`); no role concept applies. |
 
 ### 3.3 Tokens
 
@@ -118,27 +126,36 @@ never be mixed.
 
 ### 3.4 Endpoints
 
-| Endpoint                          | Auth     | Purpose |
-|-----------------------------------|----------|---------|
-| `POST /api/v1/auth/admin/login`   | public   | Admin (web) login by email+password. |
-| `POST /api/v1/auth/staff/login`   | public   | Staff (POS) login by username+password. |
-| `POST /api/v1/auth/refresh`       | public   | Rotate tokens using a valid `refreshToken`. |
-| `POST /api/v1/auth/logout`        | public   | Revoke the supplied `refreshToken` (idempotent, returns 204). |
-| `GET  /api/v1/auth/me`            | Bearer   | Identity of the current principal. |
+| Endpoint                            | Auth     | Purpose |
+|--------------------------------------|----------|---------|
+| `POST /api/v1/auth/admin/login`     | public   | Admin (web) login by email+password. |
+| `POST /api/v1/auth/staff/login`     | public   | Staff (POS) login by username+password. |
+| `POST /api/v1/auth/platform/login`  | public   | Superadmin (Konsol Platform) login by email+password. |
+| `POST /api/v1/auth/app/token`       | public, rate-limited 10/min/IP | External app client-credentials exchange (`{appId, secret}` → access token, no refresh token). |
+| `POST /api/v1/auth/refresh`         | public   | Rotate tokens using a valid `refreshToken` (not applicable to `app`). |
+| `POST /api/v1/auth/logout`          | public   | Revoke the supplied `refreshToken` (idempotent, returns 204). |
+| `GET  /api/v1/auth/me`              | Bearer   | Identity of the current principal. Allow-listed for a package-inactive `admin` so session-restore never itself 402s. |
 
 ### 3.5 Guard middleware (server-side enforcement)
 
 - `Authenticate` — validates the Bearer access token; on success injects the `Principal`
-  (`{ SubjectID, StoreID, Actor, Role }`) into the request context. Missing/invalid → `401`.
+  (`{ SubjectID, StoreID, Actor, Role }`) into the request context. Missing/invalid → `401`. For
+  `admin`/`staff` principals, also live-checks `stores.status` (suspended → `403`) and — for
+  `admin` — subscription status (no active package → `402` unless the route is allow-listed; for
+  `staff`, no active package → `403`). For `app` principals, live-checks `payment_clients.status`
+  (inactive → `403`, revoking access immediately even on an unexpired token). None of these are
+  cached — computed fresh every request.
 - `RequireActor(actor)` — rejects with `403` if the principal's actor type differs (e.g. master
-  data endpoints require `actor=admin`; POS write endpoints require `actor=staff`).
+  data endpoints require `actor=admin`; POS write endpoints require `actor=staff`; Konsol Platform
+  routes require `actor=platform`; external payment routes require `actor=app`).
 - `RequireRole(roles...)` — rejects with `403` if the principal's role is not in the allowed set.
 
 ### 3.6 Multi-tenancy
 
 Every business row is scoped by **`store_id`**. The store is **derived from the authenticated
 principal's `store_id` claim — never read from the request body or query string.** Service calls
-always pass `MustPrincipal(ctx).StoreID`, guaranteeing tenant isolation.
+always pass `MustPrincipal(ctx).StoreID`, guaranteeing tenant isolation. `platform` and `app`
+routes are the deliberate exception — neither actor carries a `store_id` at all.
 
 ---
 
@@ -191,9 +208,10 @@ Stable, client-consumable error codes (carried in the error envelope) and their 
 | `bad_request`      | 400  | Malformed request / missing required header. |
 | `validation_error` | 400  | Field validation failed. |
 | `unauthorized`     | 401  | Missing/invalid/expired token, invalid session. |
-| `forbidden`        | 403  | Wrong actor, insufficient role, or policy approval required. |
-| `not_found`        | 404  | Resource not found (tenant-scoped). |
-| `conflict`         | 409  | Unique constraint / idempotency / state conflict. |
+| `forbidden`        | 403  | Wrong actor, insufficient role, tenant suspended, POS staff with no active package, or an inactive `app`/external-caller token. |
+| `payment_required` | 402  | `admin` principal, no active subscription package, route not on the allow-list (§10 subscription gate). Deliberately distinct from `403` so the frontend redirects to Langganan instead of logging out. |
+| `not_found`        | 404  | Resource not found (tenant-scoped). Also used (not `403`) when an `app` principal queries another app's charge — avoids leaking "this exists, you're just not allowed" (§10 external API). |
+| `conflict`         | 409  | Unique constraint / idempotency / state conflict. Also used for a retried external-API `orderRef` (points the caller at the status-check endpoint). |
 | `unprocessable`    | 422  | Semantically invalid (e.g. insufficient stock). |
 | `rate_limited`     | 429  | Rate limit exceeded (public self-order endpoints). |
 | `internal`         | 500  | Unhandled server error (details not leaked to client). |
@@ -202,21 +220,45 @@ Stable, client-consumable error codes (carried in the error envelope) and their 
 
 ## 8. Public (no-auth) self-order endpoints
 
-Customers scan a QR encoding their table `code` and order without logging in. These endpoints are
+Customers scan a QR encoding **`{storeSlug}/{tableCode}`** — the slug is required because a table
+`code` is only unique *per store*, and the public entry point doesn't know which store until it's
+resolved via the slug (see `tableclient.Client.FindByCode`). These endpoints are
 **unauthenticated** and **rate-limited per IP** (60 req window):
 
-| Endpoint                                              | Purpose |
-|-------------------------------------------------------|---------|
-| `GET  /api/v1/public/order/{tableCode}`               | Fetch the menu for a table (table info + categories + active products). |
-| `POST /api/v1/public/order/{tableCode}`               | Place a self-order (QRIS → returns QR string; cash → returns a claim code to redeem at the cashier). |
-| `GET  /api/v1/public/order/status/{selfOrderId}`      | Poll order + payment status. |
-| `POST /api/v1/public/order/{selfOrderId}/simulate-paid` | **DEV only** — mark a pending QRIS order paid without a real gateway (returns `404` when a live payment provider is enabled). |
+| Endpoint                                                     | Purpose |
+|----------------------------------------------------------------|---------|
+| `GET  /api/v1/public/order/{storeSlug}/{tableCode}`           | Fetch the menu for a table (table info + categories + active products). |
+| `POST /api/v1/public/order/{storeSlug}/{tableCode}`           | Place a self-order (QRIS → returns QR string; cash → returns a claim code to redeem at the cashier). |
+| `POST /api/v1/public/order/{storeSlug}/{tableCode}/quote`     | Quote the price breakdown (subtotal/service/tax/total) before placing. |
+| `GET  /api/v1/public/order/status/{selfOrderId}`              | Poll order + payment status. |
+| `GET  /api/v1/public/order/events/{selfOrderId}`               | SSE stream of payment status (replaces polling). |
+| `POST /api/v1/public/order/{selfOrderId}/simulate-paid`       | **DEV only** — mark a pending QRIS order paid without a real gateway (returns `404` when a live payment provider is enabled). |
 
-A separate **webhook** endpoint (`POST /api/v1/webhooks/payment`) is also unauthenticated at the
-middleware layer — its authenticity is verified inside the `payment` module by the **active
-provider**: Tripay via the `X-Callback-Signature` header (HMAC-SHA256 of the raw body with the
-private key), or Midtrans via the `signature_key` field
-(`SHA512(order_id + status_code + gross_amount + ServerKey)`).
+A separate **webhook** endpoint (`POST /api/v1/webhooks/payment`, owned by `payment/presentation`)
+is also unauthenticated at the middleware layer — its authenticity is verified inside the
+`payment` module by the **active provider**: Tripay via the `X-Callback-Signature` header
+(HMAC-SHA256 of the raw body with the private key), or Midtrans via the `signature_key` field
+(`SHA512(order_id + status_code + gross_amount + ServerKey)`). Once verified, it's
+**registry-driven dispatched** (§ ARCHITECTURE_OVERVIEW.md) to whichever consumer created that
+charge — `selforder`, `subscription`, or (Part 3) relayed onward to an external app.
 
 Admin/staff-facing self-order management endpoints (list incoming, update status, redeem, redeem
 checkout) **do** require authentication. See [`docs/API_CONTRACT.md`](../docs/API_CONTRACT.md).
+
+## 9. Konsol Platform, subscription, and payment webhook endpoints
+
+Not covered above — see [MODULE_MAP.md](MODULE_MAP.md) for the full contract-level picture:
+
+- **`/api/v1/platform/*`** (`actor=platform` only) — tenant CRUD/suspend, revenue, plan catalog,
+  withdrawal claim/complete + history, superadmin user management, payment gateway config
+  passthrough (Tripay/Midtrans for selforder, plus ElProof credentials for subscription billing —
+  PLAN.md §11).
+- **`/api/v1/subscription*`** (`actor=admin`) — a tenant's own billing: current status, plan list,
+  checkout, invoice history. Allow-listed for a package-inactive `admin` (§3.5) so a locked-out
+  owner can still reach and pay.
+- **`/api/v1/withdrawals/balance`** (`actor=admin`) — a tenant's own available balance, read-only.
+- **`/api/v1/webhooks/payment`** — Tripay/Midtrans callback for Elkasir's own wallet (selforder).
+  **`/api/v1/webhooks/payment/elproof`** — ElProof's relay for subscription billing charges
+  (PLAN.md §11); registered with ElProof as the callbackUrl for external app `Elkasir-Billing`.
+  Elkasir no longer exposes an external payment API of its own to other apps (Part 3, PLAN.md §10,
+  was removed — see §11).

@@ -99,20 +99,22 @@ Each table is owned by exactly one module. Cross-module references (primitive ID
 | `self_orders`        | `selforder`     | `table_id`, `transaction_id` (primitive IDs). |
 | `self_order_items`   | `selforder`     | `self_order_id` (intra-module FK); `product_id` (primitive ID). |
 | `payments`           | `selforder`     | `self_order_id` (now intra-module — see §3). Moved from `payment` so a customer's self-order payment ledger never shares a table with tenant billing (`subscription_invoices`). |
-| `subscription_plans`     | `subscription` | Reference/catalog data (seeded), not tenant data. |
+| `subscription_plans`     | `subscription` | Reference/catalog data (seeded), not tenant data. `renewal_only` (migration 000015, `DEFAULT 0`) marks a plan as renew-only — a subscriber on it can never switch to/from any other plan (enforced in `subscription/application.Service.validatePlanSwitch`, not just UI-hidden). Deliberately absent from `CreateSubscriptionPlan`/`UpdateSubscriptionPlan`'s column list so it can't be toggled via the platform plan CRUD form — same immutability precedent as `code`. |
 | `store_subscriptions`    | `subscription` | `plan_id` (intra-module FK to `subscription_plans`). One row per store. |
-| `subscription_invoices`  | `subscription` | `plan_id` (intra-module FK). This module's OWN gateway ledger — never shares a row with `payments` (selforder's ledger), even though both go through the same `payment` module gateway. |
-| `payment_clients`        | `payment`      | App registry (PLAN.md §9.1.3, Part 2) — `app_id`, `secret_hash` (bcrypt, NULL for `kind='internal'`, used for incoming `POST /auth/app/token` auth), `secret_enc` (Part 3, §10.1.6 — the SAME plaintext as `secret_hash`, but reversibly AES-256-GCM-encrypted, needed ONLY to sign outbound webhook relays — bcrypt can't be reversed), `kind`, `callback_url`, `status`. Seeded with `ELKASIR-SELFORDER`/`ELKASIR-SUBSCRIBE` (migration 000019). |
-| `payment_gateway_config` | `payment`      | Single-row (app-enforced) gateway config — active provider + AES-256-GCM-encrypted credentials (§9.1.2). Replaces `TRIPAY_*`/`MIDTRANS_*` env vars after the one-time migration on first boot (§9.1.7). |
-| `payment_charge_apps`    | `payment`      | Thin index (`order_ref` PK → `app_id`, `provider_ref`) written by `CreateCharge`/`CreateChannelCharge` — NOT a ledger, used to resolve which registered consumer/app owns a webhook callback (§9.1.4) AND (Part 3, §10.2 EB2) to translate an external caller's own `orderRef` into the gateway's `provider_ref` for status checks. |
+| `subscription_invoices`  | `subscription` | `plan_id` (intra-module FK). This module's OWN gateway ledger — never shares a row with `payments` (selforder's ledger). `provider` enum gained `'elproof'` (migration 000023, PLAN.md §11) — subscription billing now goes through ElProof, a separate wallet from selforder's Tripay/Midtrans. `store_id_shadow`/`pending_lock_key` (migration 000025) enforce one open invoice per store at the DB level — see migration list below, never query them directly. |
+| `payment_clients`        | `payment`      | Internal app registry (PLAN.md §9.1.3, Part 2) — `app_id`, `status`. Seeded with `ELKASIR-SELFORDER`/`ELKASIR-SUBSCRIBE` (migration 000019), never created/modified via any admin route. `secret_hash`/`secret_enc`/`callback_url`/`kind` columns are residual from Part 3 (external-app support), removed at the code level (§11, migration 000022 dropped `secret_enc`) but left in the schema — always NULL/`internal` now. |
+| `payment_gateway_config` | `payment`      | Single-row (app-enforced) gateway config — active Tripay/Midtrans provider + AES-256-GCM-encrypted credentials (§9.1.2), PLUS (migration 000023, §11) a separate `elproof_app_id`/`elproof_secret_enc`/`elproof_base_url` — ElProof is always-on for subscription billing, not part of the Provider switch. Replaces `TRIPAY_*`/`MIDTRANS_*` env vars after the one-time migration on first boot (§9.1.7). |
+| `payment_charge_apps`    | `payment`      | Thin index (`order_ref` PK → `app_id`) written by `CreateCharge`/`CreateChannelCharge` — NOT a ledger, used to resolve which registered consumer/app owns a webhook callback (§9.1.4), for BOTH Tripay/Midtrans (selforder) and ElProof (subscription) charges. `provider_ref` column (added for Part 3's external status-check route) was dropped (migration 000022, §11) — no longer needed now that route is gone. |
 
 > Reports (`report` module) **read across** transaction/transaction_items/staff data, but only via
 > queries that stay within the analytics read model — see `db/queries/reports.sql`.
 >
-> `payment` owns `webhook_events` (generic idempotency), `payment_clients` (app registry),
-> `payment_gateway_config` (encrypted gateway credentials), and `payment_charge_apps` (dispatch
-> index) — it never writes to `payments` or `subscription_invoices` (still no business ledger of
-> its own). See `knowledge/MODULE_MAP.md` §"One shared payment webhook, registry-driven dispatch".
+> `payment` owns `webhook_events` (generic idempotency, keyed by an explicit `provider` — including
+> the isolated `"elproof"` namespace, §11), `payment_clients` (internal-only app registry),
+> `payment_gateway_config` (encrypted gateway credentials, Tripay/Midtrans + ElProof), and
+> `payment_charge_apps` (dispatch index) — it never writes to `payments` or `subscription_invoices`
+> (still no business ledger of its own). See `knowledge/MODULE_MAP.md` §"One shared payment
+> webhook, registry-driven dispatch".
 
 ---
 
@@ -143,17 +145,41 @@ Each table is owned by exactly one module. Cross-module references (primitive ID
     `staff.username` to globally unique; `refresh_tokens.actor` gains `'platform'`.
   - `000017_withdrawal_processing` — `withdrawals` gains `processed_by`/`claimed_at`/
     `processed_at`/`rejected_reason` (claim→complete flow, §2.7/§2.8).
-  - `000018_subscription_legacy_backfill` — one-time data migration: seeds a hidden
-    `legacy-grandfather` plan (`is_active=0`) and backfills an `active` `store_subscriptions` row
-    (20-year period) for every pre-existing tenant that had none, so the new §2.15
-    subscription-gate doesn't retroactively lock out tenants who were never asked to buy a plan.
+  - `000018_subscription_legacy_backfill` — one-time data migration: seeds a hidden, renewal-only
+    plan named **"Premium Contributor"** (`is_active=0`, `renewal_only=1`, real price
+    Rp1.700.000/year — revised 2026-07-14 from an earlier free/`is_active=0`/20-year design) and
+    backfills an `active` `store_subscriptions` row (365-day initial period) for every
+    pre-existing tenant that had none, so the new §2.15 subscription-gate doesn't retroactively
+    lock out tenants who were never asked to buy a plan — they get one year on the house, then
+    renew at the real price like a genuine Premium Contributor from then on.
   - `000019_payment_gateway_registry` — `payment_clients` (app registry, seeded with
     `ELKASIR-SELFORDER`/`ELKASIR-SUBSCRIBE`), `payment_gateway_config` (encrypted, DB-backed
     gateway credentials, replacing `.env`), `payment_charge_apps` (order_ref→app_id dispatch
     index) — PLAN.md §9, Part 2.
   - `000020_payment_external_api` — `payment_clients.secret_enc` (AES-256-GCM-encrypted copy of
     the same plaintext already bcrypt-hashed into `secret_hash`, needed to sign outbound webhook
-    relays) — PLAN.md §10, Part 3.
+    relays) — PLAN.md §10, Part 3. **Reverted by `000022`** (Part 3 removed, §11).
   - `000021_payment_charge_provider_ref` — `payment_charge_apps.provider_ref` (lets the external
     status-check endpoint translate a caller's own `orderRef` into the gateway's `provider_ref`)
-    — PLAN.md §10.2 EB2, Part 3.
+    — PLAN.md §10.2 EB2, Part 3. **Reverted by `000022`** (Part 3 removed, §11).
+  - `000022_payment_external_api_removal` — drops `payment_clients.secret_enc` and
+    `payment_charge_apps.provider_ref` (both Part-3-only), purges any `kind='external'` rows —
+    PLAN.md §11: Elkasir stops being a payment-gateway-as-a-service provider for other apps.
+  - `000023_payment_elproof_config` — `payment_gateway_config` gains `elproof_app_id`/
+    `elproof_secret_enc`/`elproof_base_url` (a SEPARATE, always-on wallet, not part of the
+    Tripay/Midtrans Provider switch); `subscription_invoices.provider` enum gains `'elproof'` —
+    PLAN.md §11: subscription billing now goes through ElProof (Elkasir registered there as
+    external app `Elkasir-Billing`) instead of Elkasir's own wallet.
+  - `000024_subscription_invoices_reconcile_index` — composite index
+    `(status, provider, created_at)` on `subscription_invoices`, backing the ElProof
+    reconciliation poller's `WHERE status='pending' AND provider='elproof' ORDER BY created_at`
+    query (ticks every 2 min forever — was a full table scan before this).
+  - `000025_subscription_invoices_one_pending` — enforces "at most one pending invoice per
+    store" as a DB-level invariant (closes the double-submit TOCTOU race an app-level
+    check-then-insert alone can't). Adds `store_id_shadow` (plain copy of `store_id`) +
+    `pending_lock_key` (STORED, `NULL` unless `status='pending'`) + a unique index on the
+    latter. `store_id_shadow` exists ONLY because InnoDB refuses to add a STORED generated
+    column that reads `store_id` directly, since `store_id` is the child side of
+    `fk_subscription_invoices_store`'s `ON DELETE CASCADE` (verified empirically against
+    MySQL 8.0.30 — error 1215). Never query `store_id_shadow`/`pending_lock_key` directly;
+    they exist purely for this constraint.

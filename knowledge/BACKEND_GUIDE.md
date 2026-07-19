@@ -25,6 +25,12 @@ internal/modules/<module>/
 The composition root `internal/app/app.go` builds each module via its `<module>.module.go`
 and mounts `Routes` under `/api/v1`.
 
+**Contracts-only module variant**: a module can have no `presentation/` package at all (e.g.
+`platformuser`) when every access to it goes through a *different* module's HTTP routes via its
+contract client (e.g. `platform` owns `/platform/users/*` and reaches `platformuser` only via
+`platformuserclient`). Still gets a `.module.go` wiring file and a stub `domain/events/events.go`
+for scaffold consistency, even if it emits no events.
+
 ## Conventions
 
 - **Multi-tenancy**: read `storeID := auth.Principal(ctx).StoreID` in the handler; pass it down. Never

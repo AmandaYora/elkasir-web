@@ -53,13 +53,11 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Patch("/users/{id}/status", h.setPlatformUserStatus)
 		r.Patch("/users/{id}/reset-password", h.resetPlatformUserPassword)
 
-		// Payment gateway config + app registry (PLAN.md §9.1.10, Part 2).
+		// Payment gateway config (PLAN.md §9.1.10, Part 2; now includes ElProof credentials, §11).
+		// The app-registry routes that used to live here (Part 3, "Aplikasi Terdaftar") were
+		// removed — Elkasir is no longer a payment-gateway-as-a-service provider for other apps.
 		r.Get("/payment-config", h.getPaymentConfig)
 		r.Put("/payment-config", h.updatePaymentConfig)
-		r.Get("/payment-clients", h.listPaymentApps)
-		r.Post("/payment-clients", h.createPaymentApp)
-		r.Patch("/payment-clients/{id}/reset-secret", h.resetPaymentAppSecret)
-		r.Patch("/payment-clients/{id}/status", h.setPaymentAppStatus)
 	})
 }
 
@@ -264,7 +262,7 @@ func (h *Handler) resetPlatformUserPassword(w http.ResponseWriter, r *http.Reque
 	httpx.NoContent(w)
 }
 
-// ── Payment gateway config + app registry (PLAN.md §9.1.10, Part 2) ─────────────────────────
+// ── Payment gateway config (PLAN.md §9.1.10, Part 2; ElProof credentials added §11) ─────────
 
 func (h *Handler) getPaymentConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.svc.GetPaymentConfig(r.Context())
@@ -286,6 +284,9 @@ type updatePaymentConfigRequest struct {
 	TripayMerchantCode *string `json:"tripayMerchantCode"`
 	TripayMethod       string  `json:"tripayMethod"`
 	MidtransServerKey  *string `json:"midtransServerKey"`
+	ElProofAppID       *string `json:"elproofAppId"`
+	ElProofSecret      *string `json:"elproofSecret"`
+	ElProofBaseURL     string  `json:"elproofBaseUrl"`
 }
 
 func (h *Handler) updatePaymentConfig(w http.ResponseWriter, r *http.Request) {
@@ -298,57 +299,11 @@ func (h *Handler) updatePaymentConfig(w http.ResponseWriter, r *http.Request) {
 		Provider: in.Provider, Sandbox: in.Sandbox, TripayAPIKey: in.TripayAPIKey,
 		TripayPrivateKey: in.TripayPrivateKey, TripayMerchantCode: in.TripayMerchantCode,
 		TripayMethod: in.TripayMethod, MidtransServerKey: in.MidtransServerKey,
+		ElProofAppID: in.ElProofAppID, ElProofSecret: in.ElProofSecret, ElProofBaseURL: in.ElProofBaseURL,
 	})
 	if err != nil {
 		httpx.Error(w, err)
 		return
 	}
 	httpx.OK(w, cfg, "Konfigurasi pembayaran berhasil disimpan")
-}
-
-func (h *Handler) listPaymentApps(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.svc.ListPaymentApps(r.Context())
-	if err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.OK(w, rows)
-}
-
-func (h *Handler) createPaymentApp(w http.ResponseWriter, r *http.Request) {
-	var in paymentclient.CreateAppInput
-	if err := httpx.DecodeJSON(w, r, &in); err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	result, err := h.svc.CreatePaymentApp(r.Context(), in)
-	if err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.Created(w, result, "Aplikasi berhasil didaftarkan")
-}
-
-func (h *Handler) resetPaymentAppSecret(w http.ResponseWriter, r *http.Request) {
-	secret, err := h.svc.ResetPaymentAppSecret(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.OK(w, map[string]string{"secret": secret})
-}
-
-func (h *Handler) setPaymentAppStatus(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Status string `json:"status"`
-	}
-	if err := httpx.DecodeJSON(w, r, &in); err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	if err := h.svc.SetPaymentAppStatus(r.Context(), chi.URLParam(r, "id"), in.Status); err != nil {
-		httpx.Error(w, err)
-		return
-	}
-	httpx.NoContent(w)
 }

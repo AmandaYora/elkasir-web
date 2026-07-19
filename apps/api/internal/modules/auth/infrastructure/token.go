@@ -22,31 +22,22 @@ type claims struct {
 
 // Manager issues & validates access tokens (HS256).
 type Manager struct {
-	secret      []byte
-	accessTTL   time.Duration
-	refreshTTL  time.Duration
-	appTokenTTL time.Duration // ActorApp only (§10.1.3) — no refresh token for this actor
+	secret     []byte
+	accessTTL  time.Duration
+	refreshTTL time.Duration
 }
 
-func NewManager(secret string, accessTTL, refreshTTL, appTokenTTL time.Duration) *Manager {
-	return &Manager{secret: []byte(secret), accessTTL: accessTTL, refreshTTL: refreshTTL, appTokenTTL: appTokenTTL}
+func NewManager(secret string, accessTTL, refreshTTL time.Duration) *Manager {
+	return &Manager{secret: []byte(secret), accessTTL: accessTTL, refreshTTL: refreshTTL}
 }
 
-func (m *Manager) AccessTTL() time.Duration   { return m.accessTTL }
-func (m *Manager) RefreshTTL() time.Duration  { return m.refreshTTL }
-func (m *Manager) AppTokenTTL() time.Duration { return m.appTokenTTL }
+func (m *Manager) AccessTTL() time.Duration  { return m.accessTTL }
+func (m *Manager) RefreshTTL() time.Duration { return m.refreshTTL }
 
 // IssueAccess issues an access token with the standard human-session TTL.
 func (m *Manager) IssueAccess(p authcontract.Principal) (string, time.Time, error) {
-	return m.IssueAccessWithTTL(p, m.accessTTL)
-}
-
-// IssueAccessWithTTL issues an access token with an explicit TTL override — used for ActorApp
-// (PLAN.md §10.1.3: a separate, shorter-lived, no-refresh-token machine-credential lifetime,
-// distinct from the human accessTTL/refreshTTL pair this Manager was constructed with).
-func (m *Manager) IssueAccessWithTTL(p authcontract.Principal, ttl time.Duration) (string, time.Time, error) {
 	now := time.Now()
-	exp := now.Add(ttl)
+	exp := now.Add(m.accessTTL)
 	c := claims{
 		StoreID: p.StoreID,
 		Actor:   string(p.Actor),

@@ -45,9 +45,10 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 
 	// Webhook pembayaran TIDAK didaftarkan di sini — Tripay/Midtrans hanya menyediakan SATU
-	// callback URL per akun merchant, kini dibagi dengan module subscription. Dispatcher-nya
-	// didaftarkan di composition root (internal/app/webhook.go), yang memanggil
-	// Service.ApplyWebhookEvent setelah verifikasi+parse+idempotensi.
+	// callback URL per akun merchant, dibagi lintas semua consumer (selforder, subscription, dan
+	// kind=external apps). Route-nya (POST /webhooks/payment) dan dispatch registry-driven-nya
+	// (PLAN.md §9.1.5) sekarang milik payment/presentation, yang memanggil
+	// Service.ApplyWebhookEvent setelah verifikasi+parse+idempotensi+resolve app_id.
 
 	// Staf/admin — pesanan masuk & tebus barcode.
 	r.Route("/self-orders", func(r chi.Router) {

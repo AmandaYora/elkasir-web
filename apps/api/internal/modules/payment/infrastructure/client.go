@@ -1,39 +1,34 @@
 // apiClient mengimplementasikan paymentclient.Client (dan paymentclient.Dispatcher, hanya
-// dipakai composition root + presentation) di atas SATU gateway aktif (lihat gateway.go) +
-// konfigurasi gateway yang di-DB-kan (§9.1.2) + registry app (§9.1.3). Modul ini SENGAJA tidak
-// mencatat baris ledger bisnis apa pun (mis. tabel self-order/subscription) — itu tanggung
+// dipakai composition root + presentation) di atas SATU gateway Tripay/Midtrans aktif (lihat
+// gateway.go) PLUS satu gateway ElProof yang SELALU berdampingan, khusus billing subscription
+// (elproof.go, PLAN.md §11) + konfigurasi gateway yang di-DB-kan (§9.1.2). Modul ini SENGAJA
+// tidak mencatat baris ledger bisnis apa pun (mis. tabel self-order/subscription) — itu tanggung
 // jawab masing-masing pemanggil (lihat paymentclient.Charge.Provider). State yang dipegang
 // modul ini: idempotensi webhook (webhook_events, generik), config gateway terenkripsi
-// (payment_gateway_config), registry app (payment_clients), dan indeks tipis order_ref→app_id
-// (payment_charge_apps, PLAN.md §9.1.4) — bukan ledger, hanya untuk dispatch webhook.
+// (payment_gateway_config, termasuk kredensial ElProof), registry app internal (payment_clients),
+// dan indeks tipis order_ref→app_id (payment_charge_apps, PLAN.md §9.1.4) — bukan ledger, hanya
+// untuk dispatch webhook.
 package infrastructure
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	paymentclient "github.com/elkasir/api/internal/modules/payment/contracts"
 	"github.com/elkasir/api/internal/platform/config"
 	"github.com/elkasir/api/internal/platform/db/sqlcgen"
 	"github.com/elkasir/api/internal/platform/httpx"
 	"github.com/elkasir/api/internal/platform/id"
-	"github.com/elkasir/api/internal/platform/security"
 	uow "github.com/elkasir/api/internal/platform/uow"
 )
 
@@ -41,9 +36,14 @@ type apiClient struct {
 	mu       sync.RWMutex
 	gw       gateway // nil = mode simulasi (tak ada provider aktif)
 	provider string  // label provider untuk kolom payments/webhook_events
-	uow      *uow.Manager
-	encKey   [32]byte       // AES-256-GCM key, diturunkan dari CONFIG_ENCRYPTION_KEY (§9.1.2)
-	baseCfg  config.Payment // config awal dari env, HANYA dipakai utk migrasi satu-kali (§9.1.7)
+	// elproofGW adalah dompet TERPISAH, SELALU dicoba dibangun berdampingan dengan gw di atas —
+	// bukan dipilih lewat switch Provider yang sama. HANYA dipakai untuk appID AppSubscribe
+	// (billing subscription); nil-secara-konten (enabled()==false) berarti mode simulasi untuk
+	// jalur ElProof secara independen dari mode simulasi gw Tripay/Midtrans. Lihat PLAN.md §11.
+	elproofGW *elproofGateway
+	uow       *uow.Manager
+	encKey    [32]byte       // AES-256-GCM key, diturunkan dari CONFIG_ENCRYPTION_KEY (§9.1.2)
+	baseCfg   config.Payment // config awal dari env, HANYA dipakai utk migrasi satu-kali (§9.1.7)
 
 	consumersMu sync.RWMutex
 	consumers   map[string]paymentclient.WebhookConsumer // appID -> consumer, internal saja
@@ -97,9 +97,30 @@ func (c *apiClient) activeGateway() (gateway, string) {
 	return c.gw, c.provider
 }
 
+// setElProof / activeElProof mirror setGateway / activeGateway above for the second, always-
+// present ElProof wallet (§11) — guarded by the SAME mutex since both are rebuilt together in
+// reload().
+func (c *apiClient) setElProof(gw *elproofGateway) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.elproofGW = gw
+}
+
+func (c *apiClient) activeElProof() *elproofGateway {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.elproofGW
+}
+
 func (c *apiClient) Enabled() bool {
 	gw, _ := c.activeGateway()
 	return gw != nil
+}
+
+// ActiveProviderName implements paymentclient.Client.
+func (c *apiClient) ActiveProviderName() string {
+	_, provider := c.activeGateway()
+	return provider
 }
 
 // QuoteFee mengembalikan biaya gateway untuk `amount`. 0 saat mode simulasi (gateway nil).
@@ -117,57 +138,72 @@ func (c *apiClient) CreateCharge(ctx context.Context, appID, storeID, orderID st
 	return c.CreateChannelCharge(ctx, appID, storeID, orderID, amount, paymentclient.ChannelQRIS, paymentclient.ChannelOptions{})
 }
 
-// CreateChannelCharge membuat tagihan lewat gateway aktif pada kanal manapun yang didukung
-// (§9.1.8). storeID tidak dipakai gateway (tak ada baris ledger yang ditulis modul ini) — tetap
-// bagian kontrak karena provider lain di masa depan mungkin butuh identitas merchant per-tenant.
-// Setiap charge dicatat di indeks order_ref→appID (§9.1.4), TERLEPAS dari mode simulasi atau
-// tidak, supaya dispatch webhook tetap konsisten diuji di kedua mode.
+// CreateChannelCharge membuat tagihan lewat gateway yang sesuai UNTUK appID ini (§11): appID
+// AppSubscribe SELALU lewat ElProof (dompet TERPISAH khusus subscription billing — lihat
+// elproof.go); appID lain (mis. AppSelfOrder) tetap lewat SATU wallet Tripay/Midtrans aktif
+// seperti sebelumnya (§9.1.8). storeID tidak dipakai gateway manapun (tak ada baris ledger yang
+// ditulis modul ini) — tetap bagian kontrak karena provider lain di masa depan mungkin butuh
+// identitas merchant per-tenant. Setiap charge dicatat di indeks order_ref→appID (§9.1.4),
+// TERLEPAS dari mode simulasi atau tidak, supaya dispatch webhook tetap konsisten diuji di kedua
+// mode.
 func (c *apiClient) CreateChannelCharge(ctx context.Context, appID, storeID, orderID string, amount int64, channel paymentclient.Channel, opts paymentclient.ChannelOptions) (paymentclient.Charge, error) {
-	gw, provider := c.activeGateway()
-
 	var charge paymentclient.Charge
-	if gw == nil {
-		charge = paymentclient.Charge{Channel: channel, Provider: provider, Simulated: true}
-	} else {
-		res, err := gw.createCharge(ctx, orderID, amount, channel, opts)
-		if err != nil {
-			return paymentclient.Charge{}, err
+	if appID == paymentclient.AppSubscribe {
+		elp := c.activeElProof()
+		if elp == nil || !elp.enabled() {
+			charge = paymentclient.Charge{Channel: channel, Provider: "elproof", Simulated: true}
+		} else {
+			res, err := elp.createCharge(ctx, orderID, amount, channel, opts)
+			if err != nil {
+				return paymentclient.Charge{}, err
+			}
+			charge = paymentclient.Charge{
+				Channel: channel, QRString: res.QRString, QRImageURL: res.QRImageURL,
+				VANumber: res.VANumber, VABankCode: res.VABankCode, ProviderRef: res.Ref, Provider: "elproof",
+			}
 		}
-		charge = paymentclient.Charge{
-			Channel: channel, QRString: res.QRString, QRImageURL: res.QRImageURL,
-			VANumber: res.VANumber, VABankCode: res.VABankCode, ProviderRef: res.Ref, Provider: provider,
+	} else {
+		gw, provider := c.activeGateway()
+		if gw == nil {
+			charge = paymentclient.Charge{Channel: channel, Provider: provider, Simulated: true}
+		} else {
+			res, err := gw.createCharge(ctx, orderID, amount, channel, opts)
+			if err != nil {
+				return paymentclient.Charge{}, err
+			}
+			charge = paymentclient.Charge{
+				Channel: channel, QRString: res.QRString, QRImageURL: res.QRImageURL,
+				VANumber: res.VANumber, VABankCode: res.VABankCode, ProviderRef: res.Ref, Provider: provider,
+			}
 		}
 	}
 
-	providerRef := sql.NullString{}
-	if charge.ProviderRef != "" {
-		providerRef = sql.NullString{String: charge.ProviderRef, Valid: true}
-	}
 	if err := c.uow.Q(ctx).CreateChargeApp(ctx, sqlcgen.CreateChargeAppParams{
-		OrderRef: orderID, AppID: appID, ProviderRef: providerRef,
+		OrderRef: orderID, AppID: appID,
 	}); err != nil {
 		return paymentclient.Charge{}, fmt.Errorf("payment: gagal mencatat indeks app untuk charge: %w", err)
 	}
 	return charge, nil
 }
 
-// ListChannels melaporkan kanal yang aktif di akun gateway saat ini (§9.1.8). Kosong (bukan
-// error) dalam mode simulasi.
-func (c *apiClient) ListChannels(ctx context.Context) ([]paymentclient.ChannelInfo, error) {
-	gw, _ := c.activeGateway()
-	if gw == nil {
-		return nil, nil
+// CheckStatus adalah pull-based status check, independen webhook (§9.1.8). appID menentukan
+// gateway mana yang diperiksa (sama seperti CreateChannelCharge). PENTING: makna `ref` berbeda
+// per gateway — untuk AppSubscribe (ElProof) ini adalah ORDER REF yang sama dikirim ke
+// CreateChannelCharge (invoice ID subscription itu sendiri); untuk appID lain (Tripay/Midtrans)
+// ini adalah providerRef milik gateway tersebut.
+func (c *apiClient) CheckStatus(ctx context.Context, appID, ref string) (paymentclient.ChargeStatus, error) {
+	if appID == paymentclient.AppSubscribe {
+		elp := c.activeElProof()
+		if elp == nil || !elp.enabled() {
+			return paymentclient.ChargeStatus{}, errors.New("payment: ElProof nonaktif (mode simulasi)")
+		}
+		return elp.checkStatus(ctx, ref)
 	}
-	return gw.listChannels(ctx)
-}
-
-// CheckStatus adalah pull-based status check, independen webhook (§9.1.8).
-func (c *apiClient) CheckStatus(ctx context.Context, providerRef string) (paymentclient.ChargeStatus, error) {
 	gw, _ := c.activeGateway()
 	if gw == nil {
 		return paymentclient.ChargeStatus{}, errors.New("payment: gateway nonaktif (mode simulasi)")
 	}
-	return gw.checkStatus(ctx, providerRef)
+	return gw.checkStatus(ctx, ref)
 }
 
 // VerifyWebhook: skema verifikasi spesifik provider hidup di gateway aktif (bukan di selforder).
@@ -184,8 +220,23 @@ func (c *apiClient) ParseWebhook(body []byte) (paymentclient.WebhookEvent, error
 	return gw.parseWebhook(body)
 }
 
-func (c *apiClient) WebhookSeen(ctx context.Context, eventID string) (bool, error) {
-	_, provider := c.activeGateway()
+// VerifyElProofWebhook/ParseElProofWebhook implement paymentclient.Client — the ElProof-specific
+// counterpart to VerifyWebhook/ParseWebhook above (§11), always available regardless of which
+// Tripay/Midtrans provider is currently active.
+func (c *apiClient) VerifyElProofWebhook(header http.Header, body []byte) bool {
+	elp := c.activeElProof()
+	return elp != nil && elp.verifyWebhook(header, body)
+}
+
+func (c *apiClient) ParseElProofWebhook(body []byte) (paymentclient.WebhookEvent, error) {
+	elp := c.activeElProof()
+	if elp == nil {
+		return paymentclient.WebhookEvent{}, paymentclient.ErrInvalidPayload
+	}
+	return elp.parseWebhook(body)
+}
+
+func (c *apiClient) WebhookSeen(ctx context.Context, provider, eventID string) (bool, error) {
 	_, err := c.uow.Q(ctx).GetWebhookEvent(ctx, sqlcgen.GetWebhookEventParams{Provider: provider, EventID: eventID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -193,8 +244,7 @@ func (c *apiClient) WebhookSeen(ctx context.Context, eventID string) (bool, erro
 	return err == nil, err
 }
 
-func (c *apiClient) MarkWebhookSeen(ctx context.Context, eventID string) error {
-	_, provider := c.activeGateway()
+func (c *apiClient) MarkWebhookSeen(ctx context.Context, provider, eventID string) error {
 	return c.uow.Q(ctx).CreateWebhookEvent(ctx, sqlcgen.CreateWebhookEventParams{
 		ID: id.New(), Provider: provider, EventID: eventID,
 	})
@@ -209,15 +259,15 @@ func (c *apiClient) RegisterConsumer(appID string, consumer paymentclient.Webhoo
 	c.consumers[appID] = consumer
 }
 
-// Dispatch implements paymentclient.Dispatcher — resolves which registered app owns ev.OrderRef
-// (via the order_ref→app_id index written at charge-creation time, §9.1.4) and routes the event
-// to it. Replaces the old "sub_"-prefix sniffing that used to live in internal/app/webhook.go.
-//
-// Two branches (§10.1.10, Part 3): a `kind=internal` app (self-order, subscription) is an
-// in-process Go consumer — call ApplyWebhookEvent directly, synchronously, exactly as before
-// Part 3. A `kind=external` app has no in-process consumer at all — instead, spawn a
-// fire-and-forget goroutine that relays a signed payload to its callback_url and return
-// immediately; the relay's own outcome never blocks or affects Elkasir's ack to the gateway.
+// Dispatch implements paymentclient.Dispatcher — resolves which registered in-process consumer
+// owns ev.OrderRef (via the order_ref→app_id index written at charge-creation time, §9.1.4) and
+// calls ApplyWebhookEvent on it directly, synchronously. Both remaining callers of this
+// (/webhooks/payment for Tripay/Midtrans, /webhooks/payment/elproof for ElProof) already
+// normalize their provider's callback into the same paymentclient.WebhookEvent shape before
+// calling this — Dispatch itself no longer needs to know which gateway an event came from.
+// Simplified after Part 3's removal (§11): there is no `kind=external` case anymore, so the
+// payment_clients registry lookup + outbound relay branch that used to live here is gone —
+// every registered app is `kind=internal` now.
 func (c *apiClient) Dispatch(ctx context.Context, ev paymentclient.WebhookEvent) error {
 	appID, err := c.uow.Q(ctx).GetChargeApp(ctx, ev.OrderRef)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -227,16 +277,6 @@ func (c *apiClient) Dispatch(ctx context.Context, ev paymentclient.WebhookEvent)
 		return err
 	}
 
-	row, err := c.uow.Q(ctx).GetPaymentClientByAppID(ctx, appID)
-	if err != nil {
-		return fmt.Errorf("payment: app %q tidak ditemukan di registry: %w", appID, err)
-	}
-
-	if row.Kind == sqlcgen.PaymentClientsKindExternal {
-		go c.relayWebhook(context.WithoutCancel(ctx), row, ev)
-		return nil
-	}
-
 	c.consumersMu.RLock()
 	consumer, ok := c.consumers[appID]
 	c.consumersMu.RUnlock()
@@ -244,85 +284,6 @@ func (c *apiClient) Dispatch(ctx context.Context, ev paymentclient.WebhookEvent)
 		return fmt.Errorf("payment: tidak ada consumer terdaftar untuk app %q", appID)
 	}
 	return consumer.ApplyWebhookEvent(ctx, ev)
-}
-
-// relayWebhookPayload is the JSON body relayed to an external app's callback_url — documented in
-// docs/EXTERNAL_PAYMENT_API.md (§10.2 EB5).
-type relayWebhookPayload struct {
-	EventID   string `json:"eventId"`
-	OrderRef  string `json:"orderRef"`
-	Paid      bool   `json:"paid"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-// relayWebhook signs and POSTs a webhook event to an external app's callback_url — exactly ONE
-// attempt (§10.1.10), never retried; the app is expected to fall back to
-// GET /external/payments/charges/{orderRef}/status if a relay is ever lost. Runs in its own
-// goroutine (see Dispatch) with a context already detached from the original request
-// (context.WithoutCancel) — same fire-and-forget shape as withdrawal's email notification.
-func (c *apiClient) relayWebhook(ctx context.Context, row sqlcgen.PaymentClient, ev paymentclient.WebhookEvent) {
-	if !row.CallbackUrl.Valid || strings.TrimSpace(row.CallbackUrl.String) == "" {
-		slog.Warn("payment: app eksternal tanpa callback_url, relay dilewati", "appId", row.AppID)
-		return
-	}
-	if !row.SecretEnc.Valid {
-		slog.Warn("payment: app eksternal tanpa secret_enc, relay dibatalkan", "appId", row.AppID)
-		return
-	}
-	secret, err := decryptAESGCM(c.encKey, row.SecretEnc.String)
-	if err != nil {
-		slog.Warn("payment: gagal dekripsi secret utk relay webhook", "appId", row.AppID, "err", err)
-		return
-	}
-
-	body, err := json.Marshal(relayWebhookPayload{
-		EventID: ev.EventID, OrderRef: ev.OrderRef, Paid: ev.Paid, Timestamp: time.Now().Unix(),
-	})
-	if err != nil {
-		slog.Warn("payment: gagal marshal payload relay webhook", "appId", row.AppID, "err", err)
-		return
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, row.CallbackUrl.String, bytes.NewReader(body))
-	if err != nil {
-		slog.Warn("payment: gagal membuat request relay webhook", "appId", row.AppID, "err", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Elkasir-Signature", signature)
-
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		slog.Warn("payment: relay webhook gagal terkirim", "appId", row.AppID, "callbackUrl", row.CallbackUrl.String, "err", err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		slog.Warn("payment: relay webhook ditolak penerima", "appId", row.AppID, "status", resp.StatusCode)
-	}
-}
-
-// ResolveApp implements paymentclient.Dispatcher (§10.2 EB2).
-func (c *apiClient) ResolveApp(ctx context.Context, rowID string) (paymentclient.AppInfo, error) {
-	row, err := c.uow.Q(ctx).GetPaymentClientByID(ctx, rowID)
-	if err != nil {
-		return paymentclient.AppInfo{}, err
-	}
-	return toAppInfo(row), nil
-}
-
-// ResolveCharge implements paymentclient.Dispatcher (§10.2 EB2).
-func (c *apiClient) ResolveCharge(ctx context.Context, orderRef string) (string, string, error) {
-	row, err := c.uow.Q(ctx).GetChargeAppByOrderRef(ctx, orderRef)
-	if err != nil {
-		return "", "", err
-	}
-	return row.AppID, row.ProviderRef.String, nil
 }
 
 // ── Config gateway (§9.1.2/§9.1.6) ────────────────────────────────────────────────────────────
@@ -350,6 +311,7 @@ func (c *apiClient) GetConfig(ctx context.Context) (paymentclient.GatewayConfig,
 	tripayPrivateKey, _ := c.decryptField(row.TripayPrivateKeyEnc)
 	tripayMerchantCode, _ := c.decryptField(row.TripayMerchantCodeEnc)
 	midtransServerKey, _ := c.decryptField(row.MidtransServerKeyEnc)
+	elproofSecret, _ := c.decryptField(row.ElproofSecretEnc)
 	return paymentclient.GatewayConfig{
 		Provider:                row.Provider,
 		Sandbox:                 row.Sandbox,
@@ -358,6 +320,9 @@ func (c *apiClient) GetConfig(ctx context.Context) (paymentclient.GatewayConfig,
 		TripayMerchantCode:      tripayMerchantCode,
 		TripayMethod:            row.TripayMethod,
 		MidtransServerKeyMasked: maskSecret(midtransServerKey),
+		ElProofAppID:            row.ElproofAppID.String,
+		ElProofSecretMasked:     maskSecret(elproofSecret),
+		ElProofBaseURL:          row.ElproofBaseUrl,
 	}, nil
 }
 
@@ -391,9 +356,21 @@ func (c *apiClient) UpdateConfig(ctx context.Context, in paymentclient.UpdateGat
 	if err != nil {
 		return paymentclient.GatewayConfig{}, err
 	}
+	elproofSecretEnc, err := c.resolveEncField(existing.ElproofSecretEnc, in.ElProofSecret)
+	if err != nil {
+		return paymentclient.GatewayConfig{}, err
+	}
 	method := strings.TrimSpace(in.TripayMethod)
 	if method == "" {
 		method = firstNonEmpty(existing.TripayMethod, "QRIS")
+	}
+	elproofAppID := existing.ElproofAppID
+	if in.ElProofAppID != nil {
+		elproofAppID = sql.NullString{String: strings.TrimSpace(*in.ElProofAppID), Valid: strings.TrimSpace(*in.ElProofAppID) != ""}
+	}
+	elproofBaseURL := strings.TrimSpace(in.ElProofBaseURL)
+	if elproofBaseURL == "" {
+		elproofBaseURL = firstNonEmpty(existing.ElproofBaseUrl, elproofDefaultBaseURL)
 	}
 
 	if isNew {
@@ -405,15 +382,19 @@ func (c *apiClient) UpdateConfig(ctx context.Context, in paymentclient.UpdateGat
 		}); err != nil {
 			return paymentclient.GatewayConfig{}, err
 		}
-	} else {
-		if err := q.UpdatePaymentGatewayConfig(ctx, sqlcgen.UpdatePaymentGatewayConfigParams{
-			Provider: in.Provider, Sandbox: in.Sandbox,
-			TripayApiKeyEnc: tripayAPIKeyEnc, TripayPrivateKeyEnc: tripayPrivateKeyEnc,
-			TripayMerchantCodeEnc: tripayMerchantCodeEnc, TripayMethod: method,
-			MidtransServerKeyEnc: midtransServerKeyEnc, ID: existing.ID,
-		}); err != nil {
+		existing, err = q.GetPaymentGatewayConfig(ctx)
+		if err != nil {
 			return paymentclient.GatewayConfig{}, err
 		}
+	}
+	if err := q.UpdatePaymentGatewayConfig(ctx, sqlcgen.UpdatePaymentGatewayConfigParams{
+		Provider: in.Provider, Sandbox: in.Sandbox,
+		TripayApiKeyEnc: tripayAPIKeyEnc, TripayPrivateKeyEnc: tripayPrivateKeyEnc,
+		TripayMerchantCodeEnc: tripayMerchantCodeEnc, TripayMethod: method,
+		MidtransServerKeyEnc: midtransServerKeyEnc, ID: existing.ID,
+		ElproofAppID: elproofAppID, ElproofSecretEnc: elproofSecretEnc, ElproofBaseUrl: elproofBaseURL,
+	}); err != nil {
+		return paymentclient.GatewayConfig{}, err
 	}
 
 	if err := c.reload(ctx); err != nil {
@@ -472,6 +453,10 @@ func (c *apiClient) reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	elproofSecret, err := c.decryptField(row.ElproofSecretEnc)
+	if err != nil {
+		return err
+	}
 	cfg := c.baseCfg // CallbackURL & BaseURL derivation (PublicBaseURL/env) stay as boot-time infra config
 	cfg.Provider = row.Provider
 	cfg.Sandbox = row.Sandbox
@@ -481,6 +466,10 @@ func (c *apiClient) reload(ctx context.Context) error {
 	cfg.Tripay.Method = row.TripayMethod
 	cfg.Midtrans.ServerKey = midtransServerKey
 	c.setGateway(selectGateway(cfg))
+	// ElProof (§11): dompet TERPISAH, dibangun berdampingan — TIDAK lewat selectGateway/Provider
+	// switch di atas. enabled()==false (appID/secret kosong) berarti mode simulasi untuk jalur
+	// AppSubscribe, independen dari status Provider Tripay/Midtrans.
+	c.setElProof(newElproof(row.ElproofAppID.String, elproofSecret, row.ElproofBaseUrl))
 	return nil
 }
 
@@ -565,146 +554,4 @@ func decryptAESGCM(key [32]byte, encoded string) (string, error) {
 		return "", err
 	}
 	return string(plain), nil
-}
-
-// ── Registry app (§9.1.3) ──────────────────────────────────────────────────────────────────
-
-func toAppInfo(row sqlcgen.PaymentClient) paymentclient.AppInfo {
-	return paymentclient.AppInfo{
-		ID: row.ID, AppID: row.AppID, Name: row.Name, Kind: string(row.Kind),
-		CallbackURL: row.CallbackUrl.String, Status: string(row.Status), CreatedAt: row.CreatedAt,
-	}
-}
-
-// ListApps implements paymentclient.Client.
-func (c *apiClient) ListApps(ctx context.Context) ([]paymentclient.AppInfo, error) {
-	rows, err := c.uow.Q(ctx).ListPaymentClients(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]paymentclient.AppInfo, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, toAppInfo(r))
-	}
-	return out, nil
-}
-
-// CreateApp implements paymentclient.Client — always creates a kind='external' row (the two
-// kind='internal' rows are seeded once by migration 000019, never created through this path,
-// §9.1.3). Secret is returned ONLY here, in plaintext, once — never again afterward.
-func (c *apiClient) CreateApp(ctx context.Context, in paymentclient.CreateAppInput) (paymentclient.CreateAppResult, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return paymentclient.CreateAppResult{}, httpx.Validation("Nama aplikasi wajib diisi.")
-	}
-	secret, err := generateSecret()
-	if err != nil {
-		return paymentclient.CreateAppResult{}, err
-	}
-	hash, err := security.HashPassword(secret)
-	if err != nil {
-		return paymentclient.CreateAppResult{}, err
-	}
-	// secret_enc: SAMA plaintext, disimpan reversibel (bukan secret kedua) — hanya dipakai saat
-	// menandatangani relay webhook keluar, karena bcrypt (secret_hash) tak bisa dibalik (§10.1.6).
-	enc, err := c.encryptField(secret)
-	if err != nil {
-		return paymentclient.CreateAppResult{}, err
-	}
-	uid := id.New()
-	appID := generateAppID(name)
-	callback := sql.NullString{}
-	if cb := strings.TrimSpace(in.CallbackURL); cb != "" {
-		callback = sql.NullString{String: cb, Valid: true}
-	}
-	if err := c.uow.Q(ctx).CreatePaymentClient(ctx, sqlcgen.CreatePaymentClientParams{
-		ID: uid, AppID: appID, Name: name, SecretHash: sql.NullString{String: hash, Valid: true},
-		SecretEnc: enc, Kind: sqlcgen.PaymentClientsKindExternal, CallbackUrl: callback,
-	}); err != nil {
-		return paymentclient.CreateAppResult{}, err
-	}
-	row, err := c.uow.Q(ctx).GetPaymentClientByID(ctx, uid)
-	if err != nil {
-		return paymentclient.CreateAppResult{}, err
-	}
-	return paymentclient.CreateAppResult{AppInfo: toAppInfo(row), Secret: secret}, nil
-}
-
-// ResetAppSecret implements paymentclient.Client — kind='internal' rows are rejected by the
-// underlying query's own `AND kind='external'` guard (0 rows affected → NotFound here).
-func (c *apiClient) ResetAppSecret(ctx context.Context, appRowID string) (string, error) {
-	secret, err := generateSecret()
-	if err != nil {
-		return "", err
-	}
-	hash, err := security.HashPassword(secret)
-	if err != nil {
-		return "", err
-	}
-	enc, err := c.encryptField(secret) // same plaintext, reversible copy — §10.1.6
-	if err != nil {
-		return "", err
-	}
-	n, err := c.uow.Q(ctx).SetPaymentClientSecret(ctx, sqlcgen.SetPaymentClientSecretParams{
-		SecretHash: sql.NullString{String: hash, Valid: true}, SecretEnc: enc, ID: appRowID,
-	})
-	if err != nil {
-		return "", err
-	}
-	if n == 0 {
-		return "", httpx.NotFound("Aplikasi tidak ditemukan, atau merupakan aplikasi internal bawaan sistem.")
-	}
-	return secret, nil
-}
-
-// SetAppStatus implements paymentclient.Client — same internal-row guard as ResetAppSecret
-// (§9.1.3: ELKASIR-SELFORDER/ELKASIR-SUBSCRIBE can never be deactivated through this path).
-func (c *apiClient) SetAppStatus(ctx context.Context, appRowID, status string) error {
-	if status != "active" && status != "inactive" {
-		return httpx.Validation("Status harus 'active' atau 'inactive'.")
-	}
-	n, err := c.uow.Q(ctx).SetPaymentClientStatus(ctx, sqlcgen.SetPaymentClientStatusParams{
-		Status: sqlcgen.PaymentClientsStatus(status), ID: appRowID,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return httpx.NotFound("Aplikasi tidak ditemukan, atau merupakan aplikasi internal bawaan sistem.")
-	}
-	return nil
-}
-
-func generateSecret() (string, error) {
-	raw := make([]byte, 24)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(raw), nil
-}
-
-// generateAppID derives a readable, unique app_id from the given name (slug + random suffix) —
-// collisions are astronomically unlikely (4 random bytes) and the unique index on app_id is the
-// actual safety net regardless.
-func generateAppID(name string) string {
-	slug := strings.ToUpper(strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z':
-			return r - 32
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			return r
-		default:
-			return '-'
-		}
-	}, name))
-	for strings.Contains(slug, "--") {
-		slug = strings.ReplaceAll(slug, "--", "-")
-	}
-	slug = strings.Trim(slug, "-")
-	if slug == "" {
-		slug = "APP"
-	}
-	suffix := make([]byte, 4)
-	_, _ = rand.Read(suffix)
-	return slug + "-" + strings.ToUpper(hex.EncodeToString(suffix))
 }

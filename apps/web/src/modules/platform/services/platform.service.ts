@@ -13,9 +13,6 @@ import type {
   CreatePlatformUserInput,
   GatewayConfig,
   UpdateGatewayConfigInput,
-  PaymentApp,
-  CreatePaymentAppInput,
-  CreatePaymentAppResult,
 } from "@/modules/platform/types/platform.types";
 
 // Every call passes tokenDomain:"platform" — this module never touches the tenant session.
@@ -57,16 +54,4 @@ export const platformService = {
   getPaymentConfig: () => api.get<GatewayConfig>(endpoints.platform.paymentConfig, cfg),
   updatePaymentConfig: (body: UpdateGatewayConfigInput) =>
     api.put<GatewayConfig>(endpoints.platform.paymentConfig, body, cfg),
-
-  listPaymentApps: () => api.get<PaymentApp[]>(endpoints.platform.paymentClients, cfg),
-  createPaymentApp: (body: CreatePaymentAppInput) =>
-    api.post<CreatePaymentAppResult>(endpoints.platform.paymentClients, body, cfg),
-  resetPaymentAppSecret: (id: string) =>
-    api.patch<{ secret: string }>(
-      `${endpoints.platform.paymentClients}/${id}/reset-secret`,
-      undefined,
-      cfg,
-    ),
-  setPaymentAppStatus: (id: string, status: "active" | "inactive") =>
-    api.patch<void>(`${endpoints.platform.paymentClients}/${id}/status`, { status }, cfg),
 };

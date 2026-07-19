@@ -88,7 +88,10 @@ export interface CreatePlatformUserInput {
   password: string;
 }
 
-// PLAN.md §9 (Part 2) — payment gateway config (one wallet, DB-backed) + app registry.
+// PLAN.md §9 (Part 2) — payment gateway config (Tripay/Midtrans, one wallet, DB-backed), plus
+// (§11) ElProof — a SEPARATE, always-on wallet used only for subscription billing, not part of
+// the provider switch above. The old app registry ("Aplikasi Terdaftar") was removed — Elkasir
+// is no longer a payment-gateway-as-a-service provider for other apps (Part 3 deprecated).
 
 export interface GatewayConfig {
   provider: "tripay" | "midtrans" | "";
@@ -98,6 +101,9 @@ export interface GatewayConfig {
   tripayMerchantCode: string;
   tripayMethod: string;
   midtransServerKeyMasked: string;
+  elproofAppId: string;
+  elproofSecretMasked: string;
+  elproofBaseUrl: string;
 }
 
 // Secret fields are OMITTED (not sent as "") when the superadmin doesn't retype them — the
@@ -111,25 +117,7 @@ export interface UpdateGatewayConfigInput {
   tripayPrivateKey?: string;
   tripayMerchantCode?: string;
   midtransServerKey?: string;
-}
-
-export type PaymentAppKind = "internal" | "external";
-
-export interface PaymentApp {
-  id: string;
-  appId: string;
-  name: string;
-  kind: PaymentAppKind;
-  callbackUrl: string;
-  status: "active" | "inactive";
-  createdAt: string;
-}
-
-export interface CreatePaymentAppInput {
-  name: string;
-  callbackUrl: string;
-}
-
-export interface CreatePaymentAppResult extends PaymentApp {
-  secret: string;
+  elproofAppId?: string;
+  elproofSecret?: string;
+  elproofBaseUrl: string;
 }

@@ -40,15 +40,3 @@ SELECT * FROM platform_users WHERE id = ? LIMIT 1;
 -- kolom profil milik `settings` (lihat MODULE_MAP.md); dipakai utk gerbang suspensi tenant
 -- (PLAN.md §2.13), bukan kepemilikan tabel oleh `auth`.
 SELECT status FROM stores WHERE id = ? LIMIT 1;
-
--- name: GetPaymentClientForAppLogin :one
--- Bacaan langsung ke `payment_clients` — pola yang SAMA persis dengan GetPlatformUserByEmail di
--- atas (auth punya query login-lookup sendiri ke tabel identitas modul lain; CRUD tetap milik
--- `payment`, bukan `auth`). Dipakai HANYA untuk POST /auth/app/token (PLAN.md §10.1.2/§10.1.3).
-SELECT id, app_id, secret_hash, status FROM payment_clients WHERE app_id = ? AND kind = 'external' LIMIT 1;
-
--- name: GetPaymentClientStatus :one
--- Bacaan langsung ke `payment_clients.status` — pengecualian shared-kernel yang sama classnya
--- dengan GetStoreStatus di atas; dipakai utk cek status LIVE per-request utk ActorApp
--- (PLAN.md §10.1.4), bukan kepemilikan tabel oleh `auth`.
-SELECT status FROM payment_clients WHERE id = ? LIMIT 1;

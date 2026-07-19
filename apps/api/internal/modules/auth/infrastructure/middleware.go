@@ -56,17 +56,6 @@ func (mw *Middleware) Authenticate(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if p.Actor == authcontract.ActorApp {
-			active, err := mw.paymentAppActive(r.Context(), p.SubjectID)
-			if err != nil {
-				httpx.Error(w, err)
-				return
-			}
-			if !active {
-				httpx.Error(w, httpx.Forbidden("Aplikasi ini telah dinonaktifkan."))
-				return
-			}
-		}
 		next.ServeHTTP(w, r.WithContext(authcontract.WithPrincipal(r.Context(), p)))
 	})
 }
@@ -81,19 +70,6 @@ func (mw *Middleware) tenantSuspended(ctx context.Context, storeID string) (bool
 		return false, err
 	}
 	return status == sqlcgen.StoresStatusSuspended, nil
-}
-
-// paymentAppActive reads payment_clients.status directly, live, on EVERY authenticated request
-// for ActorApp — same "no caching, no eventual-consistency window" philosophy as
-// tenantSuspended above (PLAN.md §10.1.4, mirroring §2.13/§2.14/§2.15's own precedent): a
-// superadmin deactivating an external app must revoke its access immediately, even for an
-// already-issued, unexpired token.
-func (mw *Middleware) paymentAppActive(ctx context.Context, rowID string) (bool, error) {
-	status, err := mw.q.GetPaymentClientStatus(ctx, rowID)
-	if err != nil {
-		return false, err
-	}
-	return status == sqlcgen.PaymentClientsStatusActive, nil
 }
 
 func bearerToken(r *http.Request) string {
