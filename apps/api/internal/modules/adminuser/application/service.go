@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	adminuserclient "github.com/elkasir/api/internal/modules/adminuser/contracts"
 	"github.com/elkasir/api/internal/modules/adminuser/domain"
 	"github.com/elkasir/api/internal/modules/adminuser/infrastructure"
 	"github.com/elkasir/api/internal/platform/db"
@@ -18,6 +19,22 @@ import (
 type Service struct{ repo *infrastructure.Repo }
 
 func NewService(repo *infrastructure.Repo) *Service { return &Service{repo: repo} }
+
+var _ adminuserclient.Client = (*Service)(nil)
+
+// ListByStore implements adminuserclient.Client — the cross-tenant read used by `platform` to
+// let the superadmin pick which admin account to reset (a tenant may have more than one).
+func (s *Service) ListByStore(ctx context.Context, storeID string) ([]adminuserclient.AdminUser, error) {
+	rows, err := s.repo.List(ctx, domain.ListFilter{StoreID: storeID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]adminuserclient.AdminUser, 0, len(rows))
+	for _, u := range rows {
+		out = append(out, adminuserclient.AdminUser{ID: u.ID, Name: u.Name, Email: u.Email, Role: u.Role})
+	}
+	return out, nil
+}
 
 // DTO is the safe API representation of an admin user (without password hash).
 type DTO struct {

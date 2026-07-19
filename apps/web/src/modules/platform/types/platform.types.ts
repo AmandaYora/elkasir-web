@@ -18,6 +18,15 @@ export interface CreateTenantInput {
   ownerPassword: string;
 }
 
+// Cross-tenant admin-password-reset recovery flow — the superadmin's only way to restore access
+// to a tenant that lost its own admin credentials (adminuser's own reset is self-service only).
+export interface TenantAdmin {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 export interface Plan {
   id: string;
   code: string;

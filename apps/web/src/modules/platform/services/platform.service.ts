@@ -13,6 +13,7 @@ import type {
   CreatePlatformUserInput,
   GatewayConfig,
   UpdateGatewayConfigInput,
+  TenantAdmin,
 } from "@/modules/platform/types/platform.types";
 
 // Every call passes tokenDomain:"platform" — this module never touches the tenant session.
@@ -25,6 +26,14 @@ export const platformService = {
   setTenantStatus: (id: string, status: "active" | "suspended") =>
     api.patch<Tenant>(`${endpoints.platform.tenants}/${id}/status`, { status }, cfg),
   tenantsRevenue: () => api.get<TenantRevenue[]>(endpoints.platform.tenantsRevenue, cfg),
+  listTenantAdmins: (tenantId: string) =>
+    api.get<TenantAdmin[]>(`${endpoints.platform.tenants}/${tenantId}/admins`, cfg),
+  resetTenantAdminPassword: (tenantId: string, adminId: string, password: string) =>
+    api.post<void>(
+      `${endpoints.platform.tenants}/${tenantId}/admins/${adminId}/reset-password`,
+      { password },
+      cfg,
+    ),
 
   revenue: () => api.get<RevenueSummary>(endpoints.platform.revenue, cfg),
 

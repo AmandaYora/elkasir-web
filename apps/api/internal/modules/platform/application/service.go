@@ -7,8 +7,10 @@ package application
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"sort"
 
+	adminuserclient "github.com/elkasir/api/internal/modules/adminuser/contracts"
 	paymentclient "github.com/elkasir/api/internal/modules/payment/contracts"
 	"github.com/elkasir/api/internal/modules/platform/domain"
 	"github.com/elkasir/api/internal/modules/platform/infrastructure"
@@ -29,12 +31,14 @@ type Service struct {
 	withdrawals   withdrawalclient.Client
 	platformUsers platformuserclient.Client
 	payments      paymentclient.Client
+	adminUsers    adminuserclient.Client
 }
 
-func NewService(repo *infrastructure.Repo, pool *sql.DB, subscriptionClient subscriptionclient.Client, salesClient salesclient.Client, withdrawalClient withdrawalclient.Client, platformUserClient platformuserclient.Client, paymentClient paymentclient.Client) *Service {
+func NewService(repo *infrastructure.Repo, pool *sql.DB, subscriptionClient subscriptionclient.Client, salesClient salesclient.Client, withdrawalClient withdrawalclient.Client, platformUserClient platformuserclient.Client, paymentClient paymentclient.Client, adminUserClient adminuserclient.Client) *Service {
 	return &Service{
 		repo: repo, pool: pool, subscription: subscriptionClient, sales: salesClient,
 		withdrawals: withdrawalClient, platformUsers: platformUserClient, payments: paymentClient,
+		adminUsers: adminUserClient,
 	}
 }
 
@@ -243,4 +247,26 @@ func (s *Service) GetPaymentConfig(ctx context.Context) (paymentclient.GatewayCo
 
 func (s *Service) UpdatePaymentConfig(ctx context.Context, in paymentclient.UpdateGatewayConfigInput) (paymentclient.GatewayConfig, error) {
 	return s.payments.UpdateConfig(ctx, in)
+}
+
+// ── Tenant admin-password-reset (recovery) passthrough — adminuser owns the table; this is the
+// ONE deliberate cross-tenant exception to adminuser's normally self-service-only reset flow, so
+// a superadmin can restore access to a tenant that lost its own admin credentials. ────────────
+
+// ListTenantAdmins lists a tenant's admin accounts, so the superadmin can pick which one to
+// reset (a tenant may have more than one admin/owner).
+func (s *Service) ListTenantAdmins(ctx context.Context, storeID string) ([]adminuserclient.AdminUser, error) {
+	return s.adminUsers.ListByStore(ctx, storeID)
+}
+
+// ResetTenantAdminPassword resets one tenant admin account's password. Logged (not a full audit
+// table — this app has none, see knowledge/DEPLOYMENT_PIPELINE.md §12) since it crosses the
+// tenant boundary: who (actorID, the superadmin), which tenant, which account, when.
+func (s *Service) ResetTenantAdminPassword(ctx context.Context, actorID, storeID, adminUserID, newPassword string) error {
+	if err := s.adminUsers.ResetPassword(ctx, storeID, adminUserID, newPassword); err != nil {
+		return err
+	}
+	slog.Info("platform: tenant admin password reset",
+		"actor_platform_user_id", actorID, "store_id", storeID, "admin_user_id", adminUserID)
+	return nil
 }

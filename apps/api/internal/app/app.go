@@ -122,7 +122,7 @@ func (a *App) routes(ctx context.Context) {
 
 	// Superadmin surface — tenant lifecycle + cross-tenant revenue. The ONE module allowed to
 	// read across tenants, and only via subMod/txMod's own contracts (never a direct table read).
-	platformMod := platform.New(a.Pool, a.Queries, mw, subMod.Client, txMod.SalesClient, withdrawalMod.Client, platformUserMod.Client, paymentMod.Client)
+	platformMod := platform.New(a.Pool, a.Queries, mw, subMod.Client, txMod.SalesClient, withdrawalMod.Client, platformUserMod.Client, paymentMod.Client, adminMod.Client)
 
 	// Object storage (S3-compatible) — opsional. Bila kredensial belum diisi, klien
 	// dibiarkan nil dan endpoint upload mengembalikan error yang jelas.

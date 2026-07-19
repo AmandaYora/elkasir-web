@@ -35,6 +35,8 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/tenants", h.createTenant)
 		r.Patch("/tenants/{id}/status", h.setTenantStatus)
 		r.Get("/tenants/revenue", h.tenantsRevenue)
+		r.Get("/tenants/{id}/admins", h.listTenantAdmins)
+		r.Post("/tenants/{id}/admins/{adminId}/reset-password", h.resetTenantAdminPassword)
 
 		r.Get("/revenue", h.revenue)
 
@@ -144,6 +146,32 @@ func (h *Handler) updatePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, plan)
+}
+
+func (h *Handler) listTenantAdmins(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.svc.ListTenantAdmins(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, rows)
+}
+
+func (h *Handler) resetTenantAdminPassword(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Password string `json:"password"`
+	}
+	if err := httpx.DecodeJSON(w, r, &in); err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	p := authcontract.MustPrincipal(r.Context())
+	err := h.svc.ResetTenantAdminPassword(r.Context(), p.SubjectID, chi.URLParam(r, "id"), chi.URLParam(r, "adminId"), in.Password)
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.NoContent(w)
 }
 
 func (h *Handler) tenantsRevenue(w http.ResponseWriter, r *http.Request) {

@@ -1,9 +1,18 @@
-import { useMemo, useState } from "react";
-import { Search, Plus, MoreHorizontal, Ban, CheckCircle2, Building2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Search,
+  Plus,
+  MoreHorizontal,
+  Ban,
+  CheckCircle2,
+  Building2,
+  KeyRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Select } from "@/shared/components/ui/select";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import {
   Table,
@@ -24,7 +33,11 @@ import { zodFieldErrors } from "@/shared/lib/form";
 import { platformService } from "@/modules/platform/services/platform.service";
 import { createTenantSchema } from "@/modules/platform/schemas/tenant.schema";
 import { TenantStatusBadge } from "@/modules/platform/components/TenantStatusBadge";
-import type { Tenant, CreateTenantInput } from "@/modules/platform/types/platform.types";
+import type {
+  Tenant,
+  CreateTenantInput,
+  TenantAdmin,
+} from "@/modules/platform/types/platform.types";
 
 const PAGE_SIZE = 10;
 
@@ -36,6 +49,7 @@ export default function PlatformTenantsPage() {
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [toggling, setToggling] = useState<Tenant | null>(null);
+  const [resetting, setResetting] = useState<Tenant | null>(null);
   const [busy, setBusy] = useState(false);
 
   const filtered = useMemo(
@@ -146,6 +160,9 @@ export default function PlatformTenantsPage() {
                           </Button>
                         }
                       >
+                        <DropdownItem onClick={() => setResetting(t)}>
+                          <KeyRound className="h-3.5 w-3.5" /> Reset Password Admin
+                        </DropdownItem>
                         <DropdownItem danger={t.status === "active"} onClick={() => setToggling(t)}>
                           {t.status === "active" ? (
                             <>
@@ -186,6 +203,19 @@ export default function PlatformTenantsPage() {
             refresh();
           }}
         />
+      </Modal>
+
+      <Modal
+        open={!!resetting}
+        onClose={() => setResetting(null)}
+        title="Reset Password Admin"
+        description={
+          resetting ? `Pulihkan akses tenant "${resetting.name}" dengan password baru.` : ""
+        }
+      >
+        {resetting && (
+          <ResetAdminPasswordModal tenant={resetting} onDone={() => setResetting(null)} />
+        )}
       </Modal>
 
       <ConfirmDialog
@@ -299,6 +329,90 @@ function TenantForm({ onDone }: { onDone: () => void }) {
       <div className="flex justify-end">
         <Button loading={busy} onClick={submit}>
           Buat Tenant
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ResetAdminPasswordModal({
+  tenant,
+  onDone,
+}: {
+  tenant: Tenant;
+  onDone: () => void;
+}) {
+  const adminsQuery = useAsync(() => platformService.listTenantAdmins(tenant.id), [tenant.id]);
+  const admins: TenantAdmin[] = adminsQuery.data ?? [];
+
+  const [adminId, setAdminId] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (admins.length > 0 && !adminId) setAdminId(admins[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admins]);
+
+  const submit = async () => {
+    if (!adminId) {
+      setError("Pilih akun admin.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password minimal 6 karakter.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await platformService.resetTenantAdminPassword(tenant.id, adminId, password);
+      toast.success("Password admin berhasil direset.");
+      onDone();
+    } catch {
+      toast.error("Gagal reset password. Coba lagi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (adminsQuery.loading) return <LoadingState />;
+  if (adminsQuery.error) {
+    return <ErrorState message="Gagal memuat akun admin." onRetry={adminsQuery.refetch} />;
+  }
+  if (admins.length === 0) {
+    return <p className="text-sm text-muted">Tenant ini belum punya akun admin.</p>;
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <Label>Akun Admin</Label>
+        <Select value={adminId} onChange={(e) => setAdminId(e.target.value)}>
+          {admins.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name} — {a.email} ({a.role})
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="grid gap-2">
+        <Label>Password Baru</Label>
+        <Input
+          type="password"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setError("");
+          }}
+          placeholder="••••••••"
+          aria-invalid={!!error}
+        />
+        <FieldError msg={error} />
+      </div>
+      <div className="flex justify-end">
+        <Button loading={busy} onClick={submit}>
+          Reset Password
         </Button>
       </div>
     </div>
