@@ -22,6 +22,7 @@ export const endpoints = {
   reports: {
     dashboard: "/reports/dashboard",
     sales: "/reports/sales",
+    salesByMonth: "/reports/sales-by-month",
     topProducts: "/reports/top-products",
     salesByCategory: "/reports/sales-by-category",
     paymentDistribution: "/reports/payment-distribution",
@@ -46,6 +47,5 @@ export const endpoints = {
     withdrawalHistory: "/platform/withdrawals/history",
     users: "/platform/users",
     paymentConfig: "/platform/payment-config",
-    paymentClients: "/platform/payment-clients",
   },
 } as const;

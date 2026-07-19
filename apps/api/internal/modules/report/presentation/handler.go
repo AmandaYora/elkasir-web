@@ -29,6 +29,7 @@ func (h *Handler) Routes(r chi.Router) {
 
 		r.Get("/dashboard", h.dashboard)
 		r.Get("/sales", h.sales)
+		r.Get("/sales-by-month", h.salesByMonth)
 		r.Get("/top-products", h.topProducts)
 		r.Get("/sales-by-category", h.salesByCategory)
 		r.Get("/payment-distribution", h.paymentDistribution)
@@ -74,6 +75,16 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) sales(w http.ResponseWriter, r *http.Request) {
 	from, to := timeRange(r)
 	res, err := h.svc.Sales(r.Context(), h.storeID(r), from, to)
+	if err != nil {
+		httpx.Error(w, err)
+		return
+	}
+	httpx.OK(w, res)
+}
+
+func (h *Handler) salesByMonth(w http.ResponseWriter, r *http.Request) {
+	from, to := timeRange(r)
+	res, err := h.svc.SalesByMonth(r.Context(), h.storeID(r), from, to)
 	if err != nil {
 		httpx.Error(w, err)
 		return

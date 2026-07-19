@@ -48,6 +48,13 @@ type SalesDayDTO struct {
 	Revenue int64  `json:"revenue"`
 }
 
+// SalesMonthDTO penjualan per bulan kalender.
+type SalesMonthDTO struct {
+	Month   string `json:"month"`
+	TxCount int64  `json:"txCount"`
+	Revenue int64  `json:"revenue"`
+}
+
 // TopProductDTO produk terlaris.
 type TopProductDTO struct {
 	ProductName string `json:"productName"`
@@ -127,6 +134,24 @@ func (s *Service) Sales(ctx context.Context, storeID string, from, to time.Time)
 	for _, r := range rows {
 		out = append(out, SalesDayDTO{
 			Day:     r.Day.Format("2006-01-02"),
+			TxCount: r.TxCount,
+			Revenue: r.Revenue,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) SalesByMonth(ctx context.Context, storeID string, from, to time.Time) ([]SalesMonthDTO, error) {
+	rows, err := s.repo.SalesByMonth(ctx, sqlcgen.ReportSalesByMonthParams{
+		StoreID: storeID, CreatedAt: from, CreatedAt_2: to,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SalesMonthDTO, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, SalesMonthDTO{
+			Month:   r.Month,
 			TxCount: r.TxCount,
 			Revenue: r.Revenue,
 		})

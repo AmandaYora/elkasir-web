@@ -190,6 +190,52 @@ func (q *Queries) ReportSalesByDay(ctx context.Context, arg ReportSalesByDayPara
 	return items, nil
 }
 
+const reportSalesByMonth = `-- name: ReportSalesByMonth :many
+SELECT
+  DATE_FORMAT(created_at, '%Y-%m') AS month,
+  COUNT(*) AS tx_count,
+  CAST(COALESCE(SUM(total), 0) AS SIGNED) AS revenue
+FROM transactions
+WHERE store_id = ? AND status = 'completed' AND created_at >= ? AND created_at < ?
+GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+ORDER BY month ASC
+`
+
+type ReportSalesByMonthParams struct {
+	StoreID     string    `json:"storeId"`
+	CreatedAt   time.Time `json:"createdAt"`
+	CreatedAt_2 time.Time `json:"createdAt2"`
+}
+
+type ReportSalesByMonthRow struct {
+	Month   string `json:"month"`
+	TxCount int64  `json:"txCount"`
+	Revenue int64  `json:"revenue"`
+}
+
+func (q *Queries) ReportSalesByMonth(ctx context.Context, arg ReportSalesByMonthParams) ([]ReportSalesByMonthRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportSalesByMonth, arg.StoreID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReportSalesByMonthRow{}
+	for rows.Next() {
+		var i ReportSalesByMonthRow
+		if err := rows.Scan(&i.Month, &i.TxCount, &i.Revenue); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reportSalesSummary = `-- name: ReportSalesSummary :one
 SELECT
   COUNT(*) AS tx_count,

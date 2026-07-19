@@ -5,6 +5,7 @@ import type {
   CategorySales,
   PaymentDistribution,
   SalesDay,
+  SalesMonth,
   StaffPerformance,
   TopProduct,
 } from "@/modules/statistics/types/statistics.types";
@@ -12,6 +13,8 @@ import type {
 // Report endpoints return plain objects/arrays (NOT paginated), so use api.get<T>.
 export const statisticsService = {
   sales: (query?: ListQuery) => api.get<SalesDay[]>(endpoints.reports.sales, { query }),
+  salesByMonth: (query?: ListQuery) =>
+    api.get<SalesMonth[]>(endpoints.reports.salesByMonth, { query }),
   topProducts: (query?: ListQuery) =>
     api.get<TopProduct[]>(endpoints.reports.topProducts, { query }),
   salesByCategory: (query?: ListQuery) =>

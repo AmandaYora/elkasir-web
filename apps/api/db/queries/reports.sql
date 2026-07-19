@@ -22,6 +22,16 @@ WHERE store_id = ? AND status = 'completed' AND created_at >= ? AND created_at <
 GROUP BY DATE(created_at)
 ORDER BY day ASC;
 
+-- name: ReportSalesByMonth :many
+SELECT
+  DATE_FORMAT(created_at, '%Y-%m') AS month,
+  COUNT(*) AS tx_count,
+  CAST(COALESCE(SUM(total), 0) AS SIGNED) AS revenue
+FROM transactions
+WHERE store_id = ? AND status = 'completed' AND created_at >= ? AND created_at < ?
+GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+ORDER BY month ASC;
+
 -- name: ReportTopProducts :many
 SELECT
   ti.product_name AS product_name,

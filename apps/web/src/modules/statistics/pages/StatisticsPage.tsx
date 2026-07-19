@@ -24,7 +24,7 @@ import {
 } from "@/shared/components/ui/card";
 import { ChartTooltip, ChartState, LegendRow } from "@/shared/components/ui/chart";
 import { formatIDR, formatNumber } from "@/shared/lib/formatter";
-import { formatCompactIDR, formatDayShort, rankShade } from "@/shared/lib/chart";
+import { formatCompactIDR, formatDayShort, formatMonthShort, rankShade } from "@/shared/lib/chart";
 import { useAsync } from "@/shared/hooks/useAsync";
 import { cn } from "@/shared/lib/cn";
 import { colors, chartPalette } from "@/theme";
@@ -34,19 +34,30 @@ const RANGE_OPTIONS = [
   { value: "7", label: "7 hari" },
   { value: "30", label: "30 hari" },
   { value: "90", label: "90 hari" },
+  { value: "12m", label: "Bulanan" },
 ];
 
 // Money = primary blue; counts = slate. Mono ticks read as data, not prose.
 const AXIS_TICK = { fill: colors.muted, fontSize: 11, fontFamily: "var(--font-mono)" } as const;
 const PAYMENT_COLORS: Record<string, string> = { Tunai: chartPalette[0], QRIS: chartPalette[3] };
 
+// Local calendar date, not UTC — toISOString() would shift the date back a day for any
+// positive UTC-offset timezone (e.g. WIB) when `d` is midnight-local.
 function ymd(d: Date) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d;
+}
+// First day of the month `n` months back (so "12m" covers this month + 11 prior).
+function monthsAgo(n: number) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() - n, 1);
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -60,11 +71,27 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 export default function StatisticsPage() {
   const [range, setRange] = useState("30");
-  const days = Number(range);
+  const isMonthly = range === "12m";
+  const days = Number(range) || 30;
 
-  const period = useMemo(() => ({ from: ymd(daysAgo(days)), to: ymd(new Date()) }), [days]);
+  const period = useMemo(
+    () =>
+      isMonthly
+        ? { from: ymd(monthsAgo(11)), to: ymd(new Date()) }
+        : { from: ymd(daysAgo(days)), to: ymd(new Date()) },
+    [isMonthly, days],
+  );
 
-  const salesQuery = useAsync(() => statisticsService.sales(period), [period.from, period.to]);
+  const bucketFormatter = isMonthly ? formatMonthShort : formatDayShort;
+
+  const salesQuery = useAsync(async () => {
+    if (isMonthly) {
+      const rows = await statisticsService.salesByMonth(period);
+      return rows.map((r) => ({ bucket: r.month, revenue: r.revenue, txCount: r.txCount }));
+    }
+    const rows = await statisticsService.sales(period);
+    return rows.map((r) => ({ bucket: r.day, revenue: r.revenue, txCount: r.txCount }));
+  }, [period.from, period.to, isMonthly]);
   const paymentQuery = useAsync(() => statisticsService.paymentDistribution(), []);
   const categoryQuery = useAsync(
     () => statisticsService.salesByCategory(period),
@@ -133,21 +160,26 @@ export default function StatisticsPage() {
         </div>
       </div>
 
-      {/* Hero — revenue trend with period context (total / avg-per-day / best day). */}
+      {/* Hero — revenue trend with period context (total / avg-per-bucket / best bucket). */}
       <Card>
         <CardHeader className="pb-0">
           <CardTitle className="font-display">Pendapatan</CardTitle>
-          <CardDescription>Pendapatan harian sepanjang periode</CardDescription>
+          <CardDescription>
+            {isMonthly ? "Pendapatan bulanan, 12 bulan terakhir" : "Pendapatan harian sepanjang periode"}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
           {salesSummary && (
             <div className="flex flex-wrap gap-x-10 gap-y-3 border-b border-border pb-4">
               <Metric label="Total" value={formatIDR(salesSummary.total)} />
-              <Metric label="Rata-rata / hari" value={formatIDR(Math.round(salesSummary.avg))} />
+              <Metric
+                label={isMonthly ? "Rata-rata / bulan" : "Rata-rata / hari"}
+                value={formatIDR(Math.round(salesSummary.avg))}
+              />
               <Metric label="Transaksi" value={formatNumber(salesSummary.tx)} />
               <Metric
-                label="Hari terbaik"
-                value={`${formatDayShort(salesSummary.peak.day)} · ${formatCompactIDR(salesSummary.peak.revenue)}`}
+                label={isMonthly ? "Bulan terbaik" : "Hari terbaik"}
+                value={`${bucketFormatter(salesSummary.peak.bucket)} · ${formatCompactIDR(salesSummary.peak.revenue)}`}
               />
             </div>
           )}
@@ -167,8 +199,8 @@ export default function StatisticsPage() {
                   </defs>
                   <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.7} />
                   <XAxis
-                    dataKey="day"
-                    tickFormatter={formatDayShort}
+                    dataKey="bucket"
+                    tickFormatter={bucketFormatter}
                     tickLine={false}
                     axisLine={false}
                     tickMargin={10}
@@ -200,7 +232,7 @@ export default function StatisticsPage() {
                     cursor={{ stroke: colors.primary, strokeOpacity: 0.25, strokeWidth: 1.5 }}
                     content={
                       <ChartTooltip
-                        labelFormatter={(l) => formatDayShort(String(l))}
+                        labelFormatter={(l) => bucketFormatter(String(l))}
                         formatter={(v) => formatIDR(v)}
                       />
                     }
@@ -231,7 +263,9 @@ export default function StatisticsPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-display">Volume Transaksi</CardTitle>
-            <CardDescription>Jumlah transaksi harian</CardDescription>
+            <CardDescription>
+              {isMonthly ? "Jumlah transaksi bulanan" : "Jumlah transaksi harian"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -244,8 +278,8 @@ export default function StatisticsPage() {
                   <BarChart data={sales} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke={colors.border} strokeOpacity={0.7} />
                     <XAxis
-                      dataKey="day"
-                      tickFormatter={formatDayShort}
+                      dataKey="bucket"
+                      tickFormatter={bucketFormatter}
                       tickLine={false}
                       axisLine={false}
                       tickMargin={10}
@@ -263,7 +297,7 @@ export default function StatisticsPage() {
                       cursor={{ fill: colors.surfaceMuted, fillOpacity: 0.6 }}
                       content={
                         <ChartTooltip
-                          labelFormatter={(l) => formatDayShort(String(l))}
+                          labelFormatter={(l) => bucketFormatter(String(l))}
                           formatter={(v) => formatNumber(v)}
                         />
                       }

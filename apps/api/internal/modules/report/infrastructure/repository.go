@@ -24,6 +24,10 @@ func (r *Repo) SalesByDay(ctx context.Context, p sqlcgen.ReportSalesByDayParams)
 	return r.q.ReportSalesByDay(ctx, p)
 }
 
+func (r *Repo) SalesByMonth(ctx context.Context, p sqlcgen.ReportSalesByMonthParams) ([]sqlcgen.ReportSalesByMonthRow, error) {
+	return r.q.ReportSalesByMonth(ctx, p)
+}
+
 func (r *Repo) TopProducts(ctx context.Context, p sqlcgen.ReportTopProductsParams) ([]sqlcgen.ReportTopProductsRow, error) {
 	return r.q.ReportTopProducts(ctx, p)
 }

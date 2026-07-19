@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   DollarSign,
   Receipt,
@@ -37,10 +38,39 @@ import { useAsync } from "@/shared/hooks/useAsync";
 import { useAuthStore } from "@/shared/stores/auth.store";
 import { colors, chartPalette } from "@/theme";
 import { StatCard } from "@/modules/dashboard/components/StatCard";
+import { MonthComparisonCard } from "@/modules/dashboard/components/MonthComparisonCard";
 import { dashboardService } from "@/modules/dashboard/services/dashboard.service";
 
 const AXIS_TICK = { fill: colors.muted, fontSize: 11, fontFamily: "var(--font-mono)" } as const;
 const PAYMENT_COLORS: Record<string, string> = { Tunai: chartPalette[0], QRIS: chartPalette[3] };
+
+const monthLabelFmt = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric" });
+
+// Local calendar date, not UTC — toISOString() would shift the date back a day for any
+// positive UTC-offset timezone (e.g. WIB) when `d` is midnight-local (as month boundaries are).
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Month-to-date vs. the same date range last month (apples-to-apples, not partial-vs-full-month).
+function monthCompareRanges() {
+  const now = new Date();
+  const day = now.getDate();
+  const thisStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisEnd = new Date(now.getFullYear(), now.getMonth(), day + 1);
+  const lastStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastEndRaw = new Date(now.getFullYear(), now.getMonth() - 1, day + 1);
+  const lastEnd = lastEndRaw > thisStart ? thisStart : lastEndRaw; // cap short months (e.g. Feb)
+  return {
+    thisMonth: { from: ymd(thisStart), to: ymd(thisEnd) },
+    lastMonth: { from: ymd(lastStart), to: ymd(lastEnd) },
+    thisLabel: monthLabelFmt.format(thisStart),
+    lastLabel: monthLabelFmt.format(lastStart),
+  };
+}
 
 const sourceLabel: Record<string, string> = {
   cashier: "Kasir",
@@ -60,6 +90,16 @@ export default function DashboardPage() {
   const paymentQuery = useAsync(() => dashboardService.paymentDistribution(), []);
   const topProductsQuery = useAsync(() => dashboardService.topProducts({ limit: 7 }), []);
   const categoryQuery = useAsync(() => dashboardService.salesByCategory(), []);
+
+  const monthRanges = useMemo(() => monthCompareRanges(), []);
+  const thisMonthQuery = useAsync(
+    () => dashboardService.dashboard(monthRanges.thisMonth),
+    [monthRanges.thisMonth.from, monthRanges.thisMonth.to],
+  );
+  const lastMonthQuery = useAsync(
+    () => dashboardService.dashboard(monthRanges.lastMonth),
+    [monthRanges.lastMonth.from, monthRanges.lastMonth.to],
+  );
 
   const summary = dashboardQuery.data?.summary;
   const recent = dashboardQuery.data?.recent ?? [];
@@ -148,6 +188,15 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <MonthComparisonCard
+        loading={thisMonthQuery.loading || lastMonthQuery.loading}
+        error={thisMonthQuery.error || lastMonthQuery.error}
+        thisMonthLabel={monthRanges.thisLabel}
+        lastMonthLabel={monthRanges.lastLabel}
+        thisRevenue={thisMonthQuery.data?.summary.revenue ?? 0}
+        lastRevenue={lastMonthQuery.data?.summary.revenue ?? 0}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

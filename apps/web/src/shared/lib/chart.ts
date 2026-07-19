@@ -29,3 +29,14 @@ export const formatDayShort = (ymd: string) => {
   const d = new Date(`${ymd}T00:00:00Z`);
   return Number.isNaN(d.getTime()) ? ymd : dayShort.format(d);
 };
+
+// "YYYY-MM" → "Mar 2026". Parsed/formatted in UTC so the calendar month never shifts.
+const monthShort = new Intl.DateTimeFormat("id-ID", {
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+export const formatMonthShort = (ym: string) => {
+  const d = new Date(`${ym}-01T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? ym : monthShort.format(d);
+};

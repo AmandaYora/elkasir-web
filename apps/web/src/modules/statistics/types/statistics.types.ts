@@ -6,6 +6,12 @@ export interface SalesDay {
   revenue: number;
 }
 
+export interface SalesMonth {
+  month: string;
+  txCount: number;
+  revenue: number;
+}
+
 export interface TopProduct {
   productName: string;
   qty: number;
