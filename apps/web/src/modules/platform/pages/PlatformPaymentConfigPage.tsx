@@ -107,8 +107,8 @@ export default function PlatformPaymentConfigPage() {
       <div>
         <h1 className="text-lg font-semibold text-text">Konfigurasi Pembayaran</h1>
         <p className="text-sm text-muted">
-          Dompet Tripay/Midtrans untuk self-order pelanggan, dan (terpisah) kredensial ElProof
-          untuk billing subscription tenant — ganti kredensial di sini tanpa perlu edit server.
+          Dompet Tripay/Midtrans untuk self-order pelanggan, dan (terpisah) kredensial ElProof untuk
+          billing subscription tenant — ganti kredensial di sini tanpa perlu edit server.
         </p>
       </div>
 

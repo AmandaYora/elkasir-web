@@ -165,7 +165,9 @@ export default function StatisticsPage() {
         <CardHeader className="pb-0">
           <CardTitle className="font-display">Pendapatan</CardTitle>
           <CardDescription>
-            {isMonthly ? "Pendapatan bulanan, 12 bulan terakhir" : "Pendapatan harian sepanjang periode"}
+            {isMonthly
+              ? "Pendapatan bulanan, 12 bulan terakhir"
+              : "Pendapatan harian sepanjang periode"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
