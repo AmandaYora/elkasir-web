@@ -151,9 +151,9 @@ export default function TransactionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Transaksi</TableHead>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>Pesanan</TableHead>
-                  <TableHead>Metode</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tanggal</TableHead>
+                  <TableHead className="hidden md:table-cell">Pesanan</TableHead>
+                  <TableHead className="hidden sm:table-cell">Metode</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
@@ -162,16 +162,16 @@ export default function TransactionsPage() {
                 {paged.map((t) => (
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => setDetailId(t.id)}>
                     <TableCell className="font-mono text-xs font-medium">{t.code}</TableCell>
-                    <TableCell className="text-sm text-muted">
+                    <TableCell className="hidden text-sm text-muted sm:table-cell">
                       {formatDateTime(t.createdAt)}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="hidden text-sm md:table-cell">
                       <div className="font-medium">
                         {ORDER_TYPE_LABEL[t.orderType] ?? t.orderType}
                       </div>
                       <div className="text-xs text-muted">{SOURCE_LABEL[t.source] ?? t.source}</div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <div className="inline-flex items-center gap-1.5 text-sm">
                         {t.paymentMethod === "cash" ? (
                           <Banknote className="h-3.5 w-3.5 text-muted" />

@@ -317,7 +317,7 @@ function StaffForm({
         />
         <FieldError msg={errors.name} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label>Username</Label>
           <Input
@@ -353,7 +353,7 @@ function StaffForm({
         />
         <FieldError msg={errors.email} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label>Peran</Label>
           <Select

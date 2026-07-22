@@ -1,4 +1,4 @@
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { Dropdown, DropdownItem } from "@/shared/components/ui/dropdown";
 
 export interface HeaderUser {
@@ -8,15 +8,19 @@ export interface HeaderUser {
 
 // Domain-agnostic dashboard header — takes the current user + a logout handler as props (no
 // internal useAuthStore/useNavigate) so it can be reused for both the tenant admin dashboard
-// and Konsol Platform (§2.2), each supplying their own session store.
+// and Konsol Platform (§2.2), each supplying their own session store. `onMenuClick` opens the
+// off-canvas AppSidebar drawer on mobile — omit it (e.g. on auth screens with no sidebar) to
+// hide the hamburger button entirely.
 export function AppHeader({
   title,
   user,
   onLogout,
+  onMenuClick,
 }: {
   title?: string;
   user: HeaderUser | null;
   onLogout: () => void;
+  onMenuClick?: () => void;
 }) {
   const initials = user
     ? user.name
@@ -27,8 +31,19 @@ export function AppHeader({
     : "?";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 md:px-6">
-      <h1 className="text-sm font-semibold text-text">{title}</h1>
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 md:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="-ml-1 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-muted md:hidden"
+            aria-label="Buka menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
+        <h1 className="truncate text-sm font-semibold text-text">{title}</h1>
+      </div>
       <Dropdown
         trigger={
           <button className="flex items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-surface-muted">

@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3,
@@ -16,12 +15,10 @@ import { HomepageNav } from "@/modules/homepage/components/HomepageNav";
 import { HomepageFooter } from "@/modules/homepage/components/HomepageFooter";
 import "@/modules/homepage/styles.css";
 
-type TicketStyle = CSSProperties & { "--hp-delay"?: string; "--hp-tilt"?: string };
-
 const STATUS_STYLE = {
-  baru: { label: "Baru", classes: "bg-(--hp-amber)/15 text-(--hp-amber)" },
-  diproses: { label: "Diproses", classes: "bg-white/10 text-(--hp-dark-ink-soft)" },
-  lunas: { label: "Lunas", classes: "bg-(--hp-glow)/15 text-(--hp-glow)" },
+  baru: { label: "Baru", classes: "bg-(--hp-warning)/10 text-(--hp-warning) border border-(--hp-warning)/20" },
+  diproses: { label: "Diproses", classes: "bg-(--hp-line)/30 text-(--hp-ink-soft) border border-(--hp-line)" },
+  lunas: { label: "Lunas", classes: "bg-(--hp-success)/10 text-(--hp-success) border border-(--hp-success)/20" },
 } as const;
 
 const TICKETS: {
@@ -29,328 +26,304 @@ const TICKETS: {
   status: keyof typeof STATUS_STYLE;
   items: string;
   price: string;
-  tilt: string;
 }[] = [
   {
     table: "Meja 04",
     status: "baru",
     items: "2 item · Ayam Geprek, Es Teh",
     price: "Rp47.000",
-    tilt: "-2deg",
   },
   {
     table: "Meja 02",
     status: "diproses",
     items: "4 item · Nasi Goreng x2, Jus Alpukat, Kerupuk",
     price: "Rp132.000",
-    tilt: "1.5deg",
   },
   {
     table: "Meja 07",
     status: "lunas",
     items: "1 item · Kopi Susu",
     price: "Rp18.000",
-    tilt: "-1deg",
   },
 ];
 
 const FEATURES = [
   {
     icon: QrCode,
-    name: "Self-Order QRIS Pelanggan",
-    detail: "Pesan & bayar dari meja, tanpa antre kasir",
+    name: "Self-Order Pelanggan",
+    detail: "Pelanggan bisa memesan dan membayar langsung dari meja dengan scan QR. Tanpa antre, tanpa perlu instal aplikasi apa pun.",
   },
   {
     icon: Wallet,
-    name: "Kasir & Manajemen Shift",
-    detail: "Buka-tutup shift, rekonsiliasi kas otomatis",
+    name: "Manajemen Kasir & Shift",
+    detail: "Kelola pergantian shift karyawan dengan pencatatan pemasukan kas yang akurat, rapi, dan mudah dipantau.",
   },
   {
     icon: BarChart3,
-    name: "Laporan & Analitik",
-    detail: "Penjualan, produk terlaris, performa staf",
+    name: "Laporan Penjualan",
+    detail: "Pantau omzet harian, menu paling laris, dan ringkasan pendapatan langsung dari HP atau laptop Anda.",
   },
   {
     icon: UtensilsCrossed,
-    name: "Menu & Stok Terpusat",
-    detail: "Ubah sekali, berlaku di semua kanal",
+    name: "Kelola Menu & Stok",
+    detail: "Atur daftar menu, ketersediaan stok, dan perubahan harga dengan sangat mudah dari satu layar utama.",
   },
 ];
 
 const STEPS = [
   {
     n: "01",
-    title: "Pindai kode QR di meja",
-    detail:
-      "Pelanggan memindai QR yang tertempel di meja restoran — tanpa perlu login atau instal aplikasi.",
+    title: "Pelanggan Scan QR",
+    detail: "Kode QR tersedia di setiap meja. Pelanggan cukup scan menggunakan kamera HP mereka.",
   },
   {
     n: "02",
-    title: "Pilih menu",
-    detail: "Katalog produk toko terbuka langsung di browser HP pelanggan, lengkap dengan harga.",
+    title: "Pilih Pesanan",
+    detail: "Daftar menu digital terbuka secara instan. Pelanggan bisa melihat gambar dan harga dengan jelas.",
   },
   {
     n: "03",
-    title: "Bayar via QRIS",
-    detail:
-      "Kode QRIS muncul otomatis — pelanggan bayar dari aplikasi mobile banking/e-wallet apa pun.",
+    title: "Bayar Praktis",
+    detail: "Pembayaran langsung menggunakan QRIS dari aplikasi m-banking atau e-wallet apa saja.",
   },
   {
     n: "04",
-    title: "Pesanan masuk ke kasir",
-    detail: "Begitu lunas, pesanan otomatis muncul di sistem kasir toko untuk diproses.",
+    title: "Pesanan Disiapkan",
+    detail: "Pesanan yang sudah dibayar otomatis masuk ke layar kasir atau dapur untuk segera dibuatkan.",
   },
 ];
 
 const CONSULT_POINTS = [
-  "Onboarding & migrasi data didampingi langsung oleh tim kami",
-  "Skema penagihan disesuaikan dengan skala dan jumlah cabang",
-  "Dukungan prioritas untuk kebutuhan operasional harian",
+  "Bantuan penuh saat mendaftarkan menu dan data awal toko Anda",
+  "Pilihan paket harga yang fleksibel sesuai kebutuhan jumlah cabang",
+  "Layanan prioritas jika Anda mengalami kendala saat jam operasional",
 ];
 
 export default function HomePage() {
   return (
-    <div className="hp-root">
+    <div className="hp-root relative">
       <HomepageNav />
 
-      {/* ── Hero — the counter at the moment an order lands: the page's one signature
-          scene, built from Elkasir's own self-order → kasir mechanic, not a stock visual. ── */}
-      <section className="hp-dark-section relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-32 -right-32 h-[480px] w-[480px] rounded-full bg-[radial-gradient(circle,var(--hp-glow)_0%,transparent_70%)] opacity-20 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 -left-24 h-[320px] w-[320px] rounded-full bg-[radial-gradient(circle,var(--hp-glow-deep)_0%,transparent_70%)] opacity-15 blur-3xl"
-        />
-
-        <div className="relative z-10 mx-auto grid max-w-6xl gap-14 px-5 pt-16 pb-20 sm:pt-24 sm:pb-24 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pb-28">
-          <div className="hp-rise">
-            <p className="hp-font-mono text-[11px] tracking-[0.35em] text-(--hp-glow) uppercase">
-              Sistem Kasir &amp; Self-Order QRIS
-            </p>
-            <h1 className="hp-font-display mt-5 text-[2.6rem] leading-[1.05] font-bold tracking-tight text-(--hp-dark-ink) sm:text-6xl">
-              Setiap meja,
-              <br />
+      {/* ── Hero Section ── */}
+      <section className="relative z-10 overflow-hidden border-b border-(--hp-line) bg-white pt-16 pb-20 sm:pt-24 sm:pb-32">
+        <div className="mx-auto grid max-w-7xl gap-16 px-6 lg:grid-cols-2 lg:items-center">
+          <div className="hp-animate-fade flex flex-col items-start text-left">
+            <div className="inline-flex items-center gap-2 rounded-full border border-(--hp-line) bg-(--hp-surface-raised) px-4 py-1.5">
+              <span className="flex h-2 w-2 rounded-full bg-(--hp-primary)" aria-hidden="true" />
+              <p className="hp-font-mono text-xs font-medium tracking-widest text-(--hp-ink-soft) uppercase">
+                Sistem Kasir &amp; Pemesanan Cerdas
+              </p>
+            </div>
+            
+            <h1 className="hp-font-display mt-8 text-[3rem] leading-[1.1] font-bold tracking-tight text-(--hp-ink) sm:text-6xl md:text-7xl">
+              Setiap meja, <br />
               kasir sendiri.
             </h1>
-            <p className="mt-6 max-w-md text-[16px] leading-relaxed text-(--hp-dark-ink-soft)">
-              Pelanggan pesan &amp; bayar QRIS langsung dari HP di meja. Begitu lunas, pesanan
-              otomatis masuk ke kasir — pemilik memantau semua transaksi dari satu dasbor,
-              real-time.
+            
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-(--hp-ink-soft)">
+              Ubah cara pelanggan Anda memesan. Dari memilih menu hingga membayar, semuanya bisa dilakukan langsung dari meja tanpa harus mengantre.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
               <a
                 href="#konsultasi"
-                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[linear-gradient(120deg,var(--hp-glow),var(--hp-glow-deep))] px-6 py-3 text-sm font-semibold text-(--hp-dark) transition-transform hover:scale-[1.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--hp-glow)"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-(--hp-primary) px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-(--hp-primary-hover) focus:outline-none"
               >
                 Konsultasi Harga
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </a>
               <a
                 href="#cara-kerja"
-                className="inline-flex items-center justify-center rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-(--hp-dark-ink) transition-colors hover:border-white/30 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--hp-glow)"
+                className="inline-flex items-center justify-center rounded-md border border-(--hp-line) bg-white px-6 py-3 text-sm font-medium text-(--hp-ink) transition-colors hover:bg-(--hp-surface-raised) focus:outline-none"
               >
                 Cara Kerjanya
               </a>
             </div>
-            <p className="mt-8 flex items-center gap-2 hp-font-mono text-[11px] tracking-[0.15em] text-(--hp-dark-ink-soft) uppercase">
-              <ShieldCheck className="h-3.5 w-3.5 text-(--hp-glow)" aria-hidden="true" />
-              Pembayaran QRIS diproses aman melalui Tripay
-            </p>
+            
+            <div className="mt-10 flex items-center gap-3 rounded-lg border border-(--hp-line) bg-(--hp-surface-raised) px-4 py-3">
+              <div className="flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5 text-(--hp-primary)" aria-hidden="true" />
+              </div>
+              <p className="hp-font-mono text-[11px] font-semibold tracking-wide text-(--hp-ink-soft)">
+                TRANSAKSI AMAN &amp; TERPERCAYA UNTUK SETIAP PESANAN
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-4">
-            {TICKETS.map((t, i) => {
-              const status = STATUS_STYLE[t.status];
-              const style: TicketStyle = {
-                "--hp-delay": `${i * 170 + 140}ms`,
-                "--hp-tilt": t.tilt,
-              };
-              return (
-                <div
-                  key={t.table}
-                  style={style}
-                  className="hp-ticket rounded-2xl border border-white/10 bg-(--hp-dark-raised) p-5 shadow-[0_20px_40px_-24px_rgba(0,0,0,0.6)]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 hp-font-mono text-[12px] font-medium tracking-[0.1em] text-(--hp-dark-ink) uppercase">
-                      {t.status === "baru" && (
-                        <span
-                          className="hp-pulse-dot h-1.5 w-1.5 rounded-full bg-(--hp-amber)"
-                          aria-hidden="true"
-                        />
-                      )}
-                      {t.table}
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 hp-font-mono text-[10px] font-medium tracking-[0.08em] uppercase ${status.classes}`}
-                    >
-                      {t.status === "lunas" && <Check className="h-3 w-3" aria-hidden="true" />}
-                      {status.label}
-                    </span>
+          {/* Clean Dashboard Mockup instead of floating tickets */}
+          <div className="hp-animate-fade relative flex flex-col gap-4 rounded-xl border border-(--hp-line) bg-(--hp-surface-raised) p-6 sm:p-8">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="hp-font-display font-semibold text-(--hp-ink)">Live Orders</p>
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-(--hp-success) opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-(--hp-success)"></span>
+                </span>
+                <span className="text-xs font-medium text-(--hp-ink-soft)">Real-time</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-4">
+              {TICKETS.map((t) => {
+                const status = STATUS_STYLE[t.status];
+                return (
+                  <div
+                    key={t.table}
+                    className="hp-card flex flex-col gap-3 p-5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="hp-font-mono text-sm font-semibold tracking-wide text-(--hp-ink)">
+                        {t.table}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 hp-font-mono text-[10px] font-bold tracking-widest uppercase ${status.classes}`}
+                      >
+                        {t.status === "lunas" && <Check className="h-3 w-3" aria-hidden="true" />}
+                        {status.label}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium leading-relaxed text-(--hp-ink-soft)">
+                      {t.items}
+                    </p>
+                    <p className="hp-font-mono mt-1 text-lg font-bold tracking-tight text-(--hp-ink)">
+                      {t.price}
+                    </p>
                   </div>
-                  <p className="mt-3 text-[13px] leading-relaxed text-(--hp-dark-ink-soft)">
-                    {t.items}
-                  </p>
-                  <p className="hp-glow-num mt-2 text-lg font-medium text-(--hp-dark-ink)">
-                    {t.price}
-                  </p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Fitur — presented as status panels, the same visual language as the till. ── */}
-      <section id="produk" className="px-5 py-20 sm:py-24">
-        <div className="mx-auto max-w-6xl">
-          <p className="hp-font-mono text-[11px] tracking-[0.3em] text-(--hp-glow-deep) uppercase">
-            Yang Anda Dapatkan
-          </p>
-          <h2 className="hp-font-display mt-3 max-w-xl text-2xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
-            Satu sistem, empat pekerjaan yang biasanya terpisah
-          </h2>
+      {/* ── Fitur (Clean Grid) ── */}
+      <section id="produk" className="relative z-10 bg-(--hp-surface-raised) px-6 py-24 border-b border-(--hp-line)">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center">
+            <h2 className="hp-font-display text-3xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
+              Satu sistem untuk mengelola segalanya
+            </h2>
+            <p className="mt-4 text-lg text-(--hp-ink-soft)">Pantau meja, kasir, dan laporan dengan mudah dan praktis.</p>
+          </div>
 
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-2">
             {FEATURES.map((f) => (
               <div
                 key={f.name}
-                className="rounded-2xl border border-(--hp-line) bg-(--hp-surface) p-6 transition-shadow hover:shadow-[0_16px_40px_-28px_rgba(20,40,35,0.35)]"
+                className="hp-card p-8"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--hp-glow),var(--hp-glow-deep))]">
-                  <f.icon className="h-5 w-5 text-(--hp-dark)" aria-hidden="true" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-(--hp-primary-soft) text-(--hp-primary)">
+                  <f.icon className="h-6 w-6" aria-hidden="true" />
                 </div>
-                <p className="hp-font-display mt-4 text-[15px] font-bold text-(--hp-ink)">
-                  {f.name}
-                </p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-(--hp-ink-soft)">
-                  {f.detail}
-                </p>
+                <div className="mt-6">
+                  <h3 className="hp-font-display text-xl font-semibold text-(--hp-ink)">
+                    {f.name}
+                  </h3>
+                  <p className="mt-3 text-[15px] leading-relaxed text-(--hp-ink-soft)">
+                    {f.detail}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <div className="hp-rule-fade mx-auto max-w-6xl px-5" aria-hidden="true" />
+      {/* ── Cara kerja ── */}
+      <section id="cara-kerja" className="relative z-10 px-6 py-24 bg-white border-b border-(--hp-line)">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center">
+            <h2 className="hp-font-display text-3xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
+              Pengalaman pemesanan yang cepat
+            </h2>
+            <p className="mt-4 text-lg text-(--hp-ink-soft)">Hanya 4 langkah mudah dari duduk hingga pesanan disiapkan.</p>
+          </div>
 
-      {/* ── Cara kerja — a genuine sequence, so the connected numbering is earned. ── */}
-      <section id="cara-kerja" className="px-5 py-20 sm:py-24">
-        <div className="mx-auto max-w-6xl">
-          <p className="text-center hp-font-mono text-[11px] tracking-[0.3em] text-(--hp-glow-deep) uppercase">
-            Cara Kerja Self-Order
-          </p>
-          <h2 className="hp-font-display mx-auto mt-3 max-w-xl text-center text-2xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
-            Dari scan meja sampai pesanan diproses
-          </h2>
-
-          <ol className="mt-12 grid gap-x-4 gap-y-10 sm:grid-cols-2 lg:flex lg:items-start lg:gap-0">
-            {STEPS.flatMap((s, i) => {
-              const card = (
+          <div className="mt-16 relative">
+            {/* Connecting Line (Desktop) */}
+            <div className="hidden lg:block absolute top-8 left-[10%] right-[10%] h-[1px] bg-(--hp-line)" />
+            
+            <ol className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+              {STEPS.map((s) => (
                 <li
                   key={s.n}
-                  className="flex flex-col items-start lg:flex-1 lg:items-center lg:text-center"
+                  className="relative flex flex-col items-center text-center bg-white"
                 >
-                  <span className="hp-font-display flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-(--hp-glow) font-bold text-(--hp-ink)">
-                    {s.n}
-                  </span>
-                  <p className="hp-font-display mt-3 text-[15px] font-bold text-(--hp-ink)">
+                  <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-(--hp-surface-raised) border border-(--hp-line)">
+                    <span className="hp-font-mono text-xl font-bold text-(--hp-ink)">
+                      {s.n}
+                    </span>
+                  </div>
+                  <h3 className="hp-font-display mt-6 text-lg font-bold text-(--hp-ink)">
                     {s.title}
-                  </p>
-                  <p className="mt-1.5 max-w-[26ch] text-[13px] leading-relaxed text-(--hp-ink-soft)">
+                  </h3>
+                  <p className="mt-3 max-w-[28ch] text-sm leading-relaxed text-(--hp-ink-soft)">
                     {s.detail}
                   </p>
                 </li>
-              );
-              if (i === STEPS.length - 1) return [card];
-              const connector = (
-                <li
-                  key={`${s.n}-connector`}
-                  aria-hidden="true"
-                  className="hidden shrink-0 items-center lg:flex lg:w-10 lg:translate-y-[22px]"
-                >
-                  <span className="h-px w-full bg-[linear-gradient(to_right,var(--hp-glow),var(--hp-line))]" />
-                  <ChevronRight className="h-4 w-4 shrink-0 text-(--hp-glow-deep)" />
-                </li>
-              );
-              return [card, connector];
-            })}
-          </ol>
+              ))}
+            </ol>
+          </div>
         </div>
       </section>
 
-      {/* ── Harga — enterprise: no self-serve price tags, one consultative path to sales. ── */}
-      <section id="konsultasi" className="bg-(--hp-surface) px-5 py-20 sm:py-24">
+      {/* ── Harga & Kemitraan (Professional CTA) ── */}
+      <section id="konsultasi" className="relative z-10 px-6 py-24 sm:py-32 bg-(--hp-surface-raised)">
         <div className="mx-auto max-w-5xl">
-          <p className="text-center hp-font-mono text-[11px] tracking-[0.3em] text-(--hp-glow-deep) uppercase">
-            Harga &amp; Kemitraan
-          </p>
-          <h2 className="hp-font-display mx-auto mt-3 max-w-xl text-center text-2xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
-            Skema harga disesuaikan dengan skala bisnis Anda
-          </h2>
-          <p className="mx-auto mt-4 max-w-lg text-center text-[15px] leading-relaxed text-(--hp-ink-soft)">
-            Setiap toko, kafe, dan restoran punya kebutuhan berbeda — jumlah meja, staf, dan volume
-            transaksi. Tim kami akan membantu menyusun skema kerja sama yang tepat, langsung dari
-            konsultasi awal.
-          </p>
-
-          <div className="mt-12 grid gap-10 rounded-2xl border border-(--hp-line) bg-(--hp-surface) px-8 py-10 sm:px-12 sm:py-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:gap-14">
-            <div>
-              <p className="hp-font-display text-lg font-bold text-(--hp-ink)">
-                Yang Anda dapatkan dari konsultasi
-              </p>
-              <ul className="mt-5 space-y-3.5">
-                {CONSULT_POINTS.map((point) => (
-                  <li
-                    key={point}
-                    className="flex items-start gap-3 text-[14px] leading-relaxed text-(--hp-ink-soft)"
-                  >
-                    <CheckCircle2
-                      className="mt-0.5 h-4 w-4 shrink-0 text-(--hp-glow-deep)"
-                      aria-hidden="true"
-                    />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="hp-dark-section relative overflow-hidden rounded-2xl px-7 py-9 text-center">
-              <div className="relative z-10">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--hp-glow),var(--hp-glow-deep))]">
-                  <Mail className="h-6 w-6 text-(--hp-dark)" aria-hidden="true" />
-                </div>
-                <p className="mt-4 text-[13px] text-(--hp-dark-ink-soft)">
-                  Konsultasi &amp; penawaran harga
+          <div className="hp-card overflow-hidden rounded-2xl bg-white">
+            <div className="grid gap-12 px-8 py-12 sm:px-12 lg:grid-cols-[1.3fr_0.7fr] lg:gap-8 lg:p-16">
+              <div>
+                <h2 className="hp-font-display text-3xl font-bold tracking-tight text-(--hp-ink)">
+                  Solusi kasir lengkap tanpa biaya tersembunyi.
+                </h2>
+                <p className="mt-4 text-lg leading-relaxed text-(--hp-ink-soft)">
+                  Kebutuhan bisnis tiap tempat berbeda. Mari bicarakan kendala operasional Anda dan temukan solusinya bersama kami.
                 </p>
+
+                <ul className="mt-8 space-y-4">
+                  {CONSULT_POINTS.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-4 text-sm leading-relaxed text-(--hp-ink)"
+                    >
+                      <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-(--hp-primary-soft)">
+                        <CheckCircle2
+                          className="h-3.5 w-3.5 text-(--hp-primary)"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex flex-col justify-center items-center lg:items-end text-center lg:text-right border-t border-(--hp-line) lg:border-t-0 lg:border-l pt-12 lg:pt-0 lg:pl-12">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-(--hp-surface-raised) border border-(--hp-line)">
+                  <Mail className="h-6 w-6 text-(--hp-ink)" aria-hidden="true" />
+                </div>
+                <h3 className="mt-6 text-lg font-semibold text-(--hp-ink)">Hubungi Tim Kami</h3>
                 <a
                   href="mailto:cs@elcodelabs.com"
-                  className="hp-font-display mt-1 block text-xl font-bold text-(--hp-dark-ink) transition-colors hover:text-(--hp-glow)"
+                  className="hp-font-mono mt-2 block text-lg font-bold text-(--hp-ink) transition-colors hover:text-(--hp-primary)"
                 >
                   cs@elcodelabs.com
                 </a>
                 <a
                   href="mailto:cs@elcodelabs.com"
-                  className="mt-6 inline-flex items-center justify-center gap-1.5 rounded-full bg-[linear-gradient(120deg,var(--hp-glow),var(--hp-glow-deep))] px-6 py-3 text-sm font-semibold text-(--hp-dark) transition-transform hover:scale-[1.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--hp-glow)"
+                  className="mt-6 inline-flex items-center justify-center gap-2 rounded-md bg-(--hp-ink) px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-800"
                 >
-                  Kirim Email ke Tim Kami
+                  Kirim Email
                   <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </a>
-                <p className="mt-4 hp-font-mono text-[10px] tracking-[0.15em] text-(--hp-dark-ink-soft) uppercase">
-                  Respon dalam 1×24 jam kerja
-                </p>
               </div>
             </div>
           </div>
 
-          <p className="mt-8 text-center text-[13px] text-(--hp-ink-soft)">
-            Lihat juga{" "}
+          <p className="mt-12 text-center text-sm font-medium text-(--hp-ink-soft)">
+            Informasi legal mengenai layanan kami ada di{" "}
             <Link
               to={ROUTE_PATHS.homepageTerms}
-              className="font-medium text-(--hp-glow-deep) underline underline-offset-2"
+              className="text-(--hp-ink) underline underline-offset-4 hover:text-(--hp-primary) transition-colors"
             >
               Syarat &amp; Ketentuan
             </Link>

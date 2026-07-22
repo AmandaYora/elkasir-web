@@ -1,5 +1,5 @@
-import { Suspense } from "react";
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Suspense, useEffect, useState } from "react";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { usePlatformAuthStore } from "@/modules/platform/stores/platform-auth.store";
 import { platformNavGroups } from "@/modules/platform/config/platformNav";
 import { ROUTE_PATHS } from "@/app/routes/route-paths";
@@ -16,6 +16,12 @@ export function PlatformLayout() {
   const status = usePlatformAuthStore((s) => s.status);
   const logout = usePlatformAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   if (status === "loading") {
     return (
@@ -33,9 +39,18 @@ export function PlatformLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar groups={platformNavGroups} subtitle="Konsol Platform" />
+      <AppSidebar
+        groups={platformNavGroups}
+        subtitle="Konsol Platform"
+        mobileOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader user={{ name: user.name, roleLabel: "Superadmin" }} onLogout={onLogout} />
+        <AppHeader
+          user={{ name: user.name, roleLabel: "Superadmin" }}
+          onLogout={onLogout}
+          onMenuClick={() => setMobileNavOpen(true)}
+        />
         <main className="flex-1 overflow-y-auto">
           <Suspense fallback={<LoadingState />}>
             <Outlet />

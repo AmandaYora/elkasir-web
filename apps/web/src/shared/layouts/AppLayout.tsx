@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -82,6 +82,13 @@ export function AppLayout() {
   const locked = usePaymentLockStore((s) => s.locked);
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Close the off-canvas sidebar whenever the route changes (link click already closes it via
+  // AppSidebar's onClick, but this also covers back/forward navigation and redirects).
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   if (status === "loading") {
     return (
@@ -105,11 +112,17 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar groups={locked ? lockedNavGroups : tenantNavGroups} subtitle="Admin POS" />
+      <AppSidebar
+        groups={locked ? lockedNavGroups : tenantNavGroups}
+        subtitle="Admin POS"
+        mobileOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader
           user={{ name: user.name, roleLabel: adminRoleLabel[user.role] ?? user.role }}
           onLogout={onLogout}
+          onMenuClick={() => setMobileNavOpen(true)}
         />
         {locked && (
           <div className="flex items-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-sm text-warning md:px-6">

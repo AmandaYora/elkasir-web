@@ -154,7 +154,7 @@ export default function SettingsPage() {
             />
             <span className="text-sm font-medium">Aktifkan PPN</span>
           </label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="taxPercent">PPN (%)</Label>
               <Input

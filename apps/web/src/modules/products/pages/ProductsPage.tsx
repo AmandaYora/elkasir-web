@@ -164,11 +164,11 @@ export default function ProductsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Produk</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Kategori</TableHead>
+                  <TableHead className="hidden sm:table-cell">SKU</TableHead>
+                  <TableHead className="hidden md:table-cell">Kategori</TableHead>
                   <TableHead className="text-right">Harga</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
                   <TableHead className="w-[60px]" />
                 </TableRow>
               </TableHeader>
@@ -193,8 +193,12 @@ export default function ProductsPage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted">{p.sku}</TableCell>
-                    <TableCell className="text-sm">{p.category || "—"}</TableCell>
+                    <TableCell className="hidden font-mono text-xs text-muted sm:table-cell">
+                      {p.sku}
+                    </TableCell>
+                    <TableCell className="hidden text-sm md:table-cell">
+                      {p.category || "—"}
+                    </TableCell>
                     <TableCell className="text-right font-medium">{formatIDR(p.price)}</TableCell>
                     <TableCell className="text-right">
                       <span
@@ -205,7 +209,7 @@ export default function ProductsPage() {
                         {p.stock}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <ProductStatusBadge status={p.status} />
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
@@ -448,7 +452,7 @@ function ProductForm({
         />
         <FieldError msg={errors.name} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label>SKU</Label>
           <Input
@@ -478,7 +482,7 @@ function ProductForm({
           </Select>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div className="grid gap-2">
           <Label>Harga (Rp)</Label>
           <MoneyInput value={form.price} onChange={(n) => upd({ price: n })} />
