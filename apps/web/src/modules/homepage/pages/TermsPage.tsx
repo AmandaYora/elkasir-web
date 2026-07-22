@@ -49,7 +49,9 @@ const SECTIONS: { title: string; body: string[] }[] = [
   },
   {
     title: "7. Hukum yang Berlaku",
-    body: ["Ketentuan ini tunduk dan patuh pada hukum dan peraturan yang berlaku di Republik Indonesia."],
+    body: [
+      "Ketentuan ini tunduk dan patuh pada hukum dan peraturan yang berlaku di Republik Indonesia.",
+    ],
   },
 ];
 
@@ -81,7 +83,10 @@ export default function TermsPage() {
           <div className="hp-card p-8 sm:p-12">
             <div className="space-y-12">
               {SECTIONS.map((s, index) => (
-                <section key={s.title} className={index !== 0 ? "pt-10 border-t border-(--hp-line)" : ""}>
+                <section
+                  key={s.title}
+                  className={index !== 0 ? "pt-10 border-t border-(--hp-line)" : ""}
+                >
                   <h2 className="hp-font-display text-xl font-semibold text-(--hp-ink) tracking-wide">
                     {s.title}
                   </h2>

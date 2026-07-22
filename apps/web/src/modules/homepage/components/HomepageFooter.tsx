@@ -9,7 +9,11 @@ export function HomepageFooter() {
         <div className="grid gap-10 sm:grid-cols-3">
           <div>
             <div className="flex items-center gap-3">
-              <img src="/elkasir-logo.png" alt="Elkasir Logo" className="h-8 w-8 rounded-lg shadow-sm" />
+              <img
+                src="/elkasir-logo.png"
+                alt="Elkasir Logo"
+                className="h-8 w-8 rounded-lg shadow-sm"
+              />
               <span className="hp-font-display text-base font-bold tracking-tight text-(--hp-ink)">
                 Elkasir
               </span>
@@ -22,14 +26,20 @@ export function HomepageFooter() {
             </p>
             <div className="mt-6 space-y-3 text-sm text-(--hp-ink-soft)">
               <p className="flex items-start gap-2.5">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-(--hp-glow-deep)" aria-hidden="true" />
+                <MapPin
+                  className="mt-0.5 h-4 w-4 shrink-0 text-(--hp-glow-deep)"
+                  aria-hidden="true"
+                />
                 <span className="max-w-[30ch] leading-relaxed">
                   Gland Ciwastra Park, Jl. Morinda X No. 26, Bojongsoang, Kab. Bandung
                 </span>
               </p>
               <p className="flex items-center gap-2.5">
                 <Phone className="h-4 w-4 shrink-0 text-(--hp-glow-deep)" aria-hidden="true" />
-                <a href="tel:+6285173471146" className="font-medium transition-colors hover:text-(--hp-glow-deep)">
+                <a
+                  href="tel:+6285173471146"
+                  className="font-medium transition-colors hover:text-(--hp-glow-deep)"
+                >
                   0851-7347-1146
                 </a>
               </p>
@@ -49,7 +59,10 @@ export function HomepageFooter() {
                 </Link>
               </li>
               <li>
-                <Link to={ROUTE_PATHS.login} className="font-medium transition-colors hover:text-(--hp-glow-deep)">
+                <Link
+                  to={ROUTE_PATHS.login}
+                  className="font-medium transition-colors hover:text-(--hp-glow-deep)"
+                >
                   Masuk ke Dasbor
                 </Link>
               </li>
@@ -80,7 +93,10 @@ export function HomepageFooter() {
           </div>
         </div>
 
-        <div className="mt-12 h-px w-full bg-gradient-to-r from-transparent via-(--hp-line) to-transparent" aria-hidden="true" />
+        <div
+          className="mt-12 h-px w-full bg-gradient-to-r from-transparent via-(--hp-line) to-transparent"
+          aria-hidden="true"
+        />
 
         <div className="mt-8 flex flex-col gap-2 hp-font-mono text-xs font-medium text-(--hp-ink-soft) sm:flex-row sm:items-center sm:justify-between">
           <span>

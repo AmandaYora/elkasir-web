@@ -16,9 +16,18 @@ import { HomepageFooter } from "@/modules/homepage/components/HomepageFooter";
 import "@/modules/homepage/styles.css";
 
 const STATUS_STYLE = {
-  baru: { label: "Baru", classes: "bg-(--hp-warning)/10 text-(--hp-warning) border border-(--hp-warning)/20" },
-  diproses: { label: "Diproses", classes: "bg-(--hp-line)/30 text-(--hp-ink-soft) border border-(--hp-line)" },
-  lunas: { label: "Lunas", classes: "bg-(--hp-success)/10 text-(--hp-success) border border-(--hp-success)/20" },
+  baru: {
+    label: "Baru",
+    classes: "bg-(--hp-warning)/10 text-(--hp-warning) border border-(--hp-warning)/20",
+  },
+  diproses: {
+    label: "Diproses",
+    classes: "bg-(--hp-line)/30 text-(--hp-ink-soft) border border-(--hp-line)",
+  },
+  lunas: {
+    label: "Lunas",
+    classes: "bg-(--hp-success)/10 text-(--hp-success) border border-(--hp-success)/20",
+  },
 } as const;
 
 const TICKETS: {
@@ -51,22 +60,26 @@ const FEATURES = [
   {
     icon: QrCode,
     name: "Self-Order Pelanggan",
-    detail: "Pelanggan bisa memesan dan membayar langsung dari meja dengan scan QR. Tanpa antre, tanpa perlu instal aplikasi apa pun.",
+    detail:
+      "Pelanggan bisa memesan dan membayar langsung dari meja dengan scan QR. Tanpa antre, tanpa perlu instal aplikasi apa pun.",
   },
   {
     icon: Wallet,
     name: "Manajemen Kasir & Shift",
-    detail: "Kelola pergantian shift karyawan dengan pencatatan pemasukan kas yang akurat, rapi, dan mudah dipantau.",
+    detail:
+      "Kelola pergantian shift karyawan dengan pencatatan pemasukan kas yang akurat, rapi, dan mudah dipantau.",
   },
   {
     icon: BarChart3,
     name: "Laporan Penjualan",
-    detail: "Pantau omzet harian, menu paling laris, dan ringkasan pendapatan langsung dari HP atau laptop Anda.",
+    detail:
+      "Pantau omzet harian, menu paling laris, dan ringkasan pendapatan langsung dari HP atau laptop Anda.",
   },
   {
     icon: UtensilsCrossed,
     name: "Kelola Menu & Stok",
-    detail: "Atur daftar menu, ketersediaan stok, dan perubahan harga dengan sangat mudah dari satu layar utama.",
+    detail:
+      "Atur daftar menu, ketersediaan stok, dan perubahan harga dengan sangat mudah dari satu layar utama.",
   },
 ];
 
@@ -79,7 +92,8 @@ const STEPS = [
   {
     n: "02",
     title: "Pilih Pesanan",
-    detail: "Daftar menu digital terbuka secara instan. Pelanggan bisa melihat gambar dan harga dengan jelas.",
+    detail:
+      "Daftar menu digital terbuka secara instan. Pelanggan bisa melihat gambar dan harga dengan jelas.",
   },
   {
     n: "03",
@@ -89,7 +103,8 @@ const STEPS = [
   {
     n: "04",
     title: "Pesanan Disiapkan",
-    detail: "Pesanan yang sudah dibayar otomatis masuk ke layar kasir atau dapur untuk segera dibuatkan.",
+    detail:
+      "Pesanan yang sudah dibayar otomatis masuk ke layar kasir atau dapur untuk segera dibuatkan.",
   },
 ];
 
@@ -114,16 +129,17 @@ export default function HomePage() {
                 Sistem Kasir &amp; Pemesanan Cerdas
               </p>
             </div>
-            
+
             <h1 className="hp-font-display mt-8 text-[3rem] leading-[1.1] font-bold tracking-tight text-(--hp-ink) sm:text-6xl md:text-7xl">
               Setiap meja, <br />
               kasir sendiri.
             </h1>
-            
+
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-(--hp-ink-soft)">
-              Ubah cara pelanggan Anda memesan. Dari memilih menu hingga membayar, semuanya bisa dilakukan langsung dari meja tanpa harus mengantre.
+              Ubah cara pelanggan Anda memesan. Dari memilih menu hingga membayar, semuanya bisa
+              dilakukan langsung dari meja tanpa harus mengantre.
             </p>
-            
+
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
               <a
                 href="#konsultasi"
@@ -139,7 +155,7 @@ export default function HomePage() {
                 Cara Kerjanya
               </a>
             </div>
-            
+
             <div className="mt-10 flex items-center gap-3 rounded-lg border border-(--hp-line) bg-(--hp-surface-raised) px-4 py-3">
               <div className="flex items-center justify-center">
                 <ShieldCheck className="h-5 w-5 text-(--hp-primary)" aria-hidden="true" />
@@ -166,10 +182,7 @@ export default function HomePage() {
               {TICKETS.map((t) => {
                 const status = STATUS_STYLE[t.status];
                 return (
-                  <div
-                    key={t.table}
-                    className="hp-card flex flex-col gap-3 p-5"
-                  >
+                  <div key={t.table} className="hp-card flex flex-col gap-3 p-5">
                     <div className="flex items-center justify-between">
                       <span className="hp-font-mono text-sm font-semibold tracking-wide text-(--hp-ink)">
                         {t.table}
@@ -196,21 +209,23 @@ export default function HomePage() {
       </section>
 
       {/* ── Fitur (Clean Grid) ── */}
-      <section id="produk" className="relative z-10 bg-(--hp-surface-raised) px-6 py-24 border-b border-(--hp-line)">
+      <section
+        id="produk"
+        className="relative z-10 bg-(--hp-surface-raised) px-6 py-24 border-b border-(--hp-line)"
+      >
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
             <h2 className="hp-font-display text-3xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
               Satu sistem untuk mengelola segalanya
             </h2>
-            <p className="mt-4 text-lg text-(--hp-ink-soft)">Pantau meja, kasir, dan laporan dengan mudah dan praktis.</p>
+            <p className="mt-4 text-lg text-(--hp-ink-soft)">
+              Pantau meja, kasir, dan laporan dengan mudah dan praktis.
+            </p>
           </div>
 
           <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-2">
             {FEATURES.map((f) => (
-              <div
-                key={f.name}
-                className="hp-card p-8"
-              >
+              <div key={f.name} className="hp-card p-8">
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-(--hp-primary-soft) text-(--hp-primary)">
                   <f.icon className="h-6 w-6" aria-hidden="true" />
                 </div>
@@ -229,29 +244,29 @@ export default function HomePage() {
       </section>
 
       {/* ── Cara kerja ── */}
-      <section id="cara-kerja" className="relative z-10 px-6 py-24 bg-white border-b border-(--hp-line)">
+      <section
+        id="cara-kerja"
+        className="relative z-10 px-6 py-24 bg-white border-b border-(--hp-line)"
+      >
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
             <h2 className="hp-font-display text-3xl font-bold tracking-tight text-(--hp-ink) sm:text-4xl">
               Pengalaman pemesanan yang cepat
             </h2>
-            <p className="mt-4 text-lg text-(--hp-ink-soft)">Hanya 4 langkah mudah dari duduk hingga pesanan disiapkan.</p>
+            <p className="mt-4 text-lg text-(--hp-ink-soft)">
+              Hanya 4 langkah mudah dari duduk hingga pesanan disiapkan.
+            </p>
           </div>
 
           <div className="mt-16 relative">
             {/* Connecting Line (Desktop) */}
             <div className="hidden lg:block absolute top-8 left-[10%] right-[10%] h-[1px] bg-(--hp-line)" />
-            
+
             <ol className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
               {STEPS.map((s) => (
-                <li
-                  key={s.n}
-                  className="relative flex flex-col items-center text-center bg-white"
-                >
+                <li key={s.n} className="relative flex flex-col items-center text-center bg-white">
                   <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-(--hp-surface-raised) border border-(--hp-line)">
-                    <span className="hp-font-mono text-xl font-bold text-(--hp-ink)">
-                      {s.n}
-                    </span>
+                    <span className="hp-font-mono text-xl font-bold text-(--hp-ink)">{s.n}</span>
                   </div>
                   <h3 className="hp-font-display mt-6 text-lg font-bold text-(--hp-ink)">
                     {s.title}
@@ -267,7 +282,10 @@ export default function HomePage() {
       </section>
 
       {/* ── Harga & Kemitraan (Professional CTA) ── */}
-      <section id="konsultasi" className="relative z-10 px-6 py-24 sm:py-32 bg-(--hp-surface-raised)">
+      <section
+        id="konsultasi"
+        className="relative z-10 px-6 py-24 sm:py-32 bg-(--hp-surface-raised)"
+      >
         <div className="mx-auto max-w-5xl">
           <div className="hp-card overflow-hidden rounded-2xl bg-white">
             <div className="grid gap-12 px-8 py-12 sm:px-12 lg:grid-cols-[1.3fr_0.7fr] lg:gap-8 lg:p-16">
@@ -276,7 +294,8 @@ export default function HomePage() {
                   Solusi kasir lengkap tanpa biaya tersembunyi.
                 </h2>
                 <p className="mt-4 text-lg leading-relaxed text-(--hp-ink-soft)">
-                  Kebutuhan bisnis tiap tempat berbeda. Mari bicarakan kendala operasional Anda dan temukan solusinya bersama kami.
+                  Kebutuhan bisnis tiap tempat berbeda. Mari bicarakan kendala operasional Anda dan
+                  temukan solusinya bersama kami.
                 </p>
 
                 <ul className="mt-8 space-y-4">

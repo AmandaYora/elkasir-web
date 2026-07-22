@@ -11,12 +11,9 @@ export function HomepageNav() {
             Elkasir
           </span>
         </Link>
-        
+
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-(--hp-ink-soft)">
-          <Link
-            to={ROUTE_PATHS.homepage}
-            className="transition-colors hover:text-(--hp-primary)"
-          >
+          <Link to={ROUTE_PATHS.homepage} className="transition-colors hover:text-(--hp-primary)">
             Beranda
           </Link>
           <Link

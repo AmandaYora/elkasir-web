@@ -4,28 +4,40 @@ import { HomepageFooter } from "@/modules/homepage/components/HomepageFooter";
 import "@/modules/homepage/styles.css";
 
 const CHANNELS = [
-  { icon: Mail, label: "Email", value: "cs@elcodelabs.com", href: "mailto:cs@elcodelabs.com", colSpan: "sm:col-span-1" },
-  { icon: Phone, label: "Telepon", value: "0851-7347-1146", href: "tel:+6285173471146", colSpan: "sm:col-span-1" },
+  {
+    icon: Mail,
+    label: "Email",
+    value: "cs@elcodelabs.com",
+    href: "mailto:cs@elcodelabs.com",
+    colSpan: "sm:col-span-1",
+  },
+  {
+    icon: Phone,
+    label: "Telepon",
+    value: "0851-7347-1146",
+    href: "tel:+6285173471146",
+    colSpan: "sm:col-span-1",
+  },
   {
     icon: Globe,
     label: "Website",
     value: "elkasir.elcodelabs.com",
     href: "https://elkasir.elcodelabs.com",
-    colSpan: "sm:col-span-2 lg:col-span-1"
+    colSpan: "sm:col-span-2 lg:col-span-1",
   },
   {
     icon: MapPin,
     label: "Alamat Kantor",
     value: "Gland Ciwastra Park, Jl. Morinda X No. 26, Bojongsoang, Kab. Bandung",
     href: null,
-    colSpan: "sm:col-span-2"
+    colSpan: "sm:col-span-2",
   },
-  { 
-    icon: Clock, 
-    label: "Jam Layanan", 
-    value: "Setiap Hari, 08.00–21.00 WIB", 
+  {
+    icon: Clock,
+    label: "Jam Layanan",
+    value: "Setiap Hari, 08.00–21.00 WIB",
     href: null,
-    colSpan: "sm:col-span-2 lg:col-span-1"
+    colSpan: "sm:col-span-2 lg:col-span-1",
   },
 ];
 
@@ -48,26 +60,24 @@ export default function ContactPage() {
               Kontak Tim Kami
             </h1>
             <p className="mt-6 max-w-xl mx-auto text-lg leading-relaxed text-(--hp-ink-soft)">
-              Ada pertanyaan soal produk, langganan, atau kendala teknis? Tim kami siap membantu melalui kanal-kanal berikut.
+              Ada pertanyaan soal produk, langganan, atau kendala teknis? Tim kami siap membantu
+              melalui kanal-kanal berikut.
             </p>
           </div>
 
           {/* Cards Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {CHANNELS.map((c) => (
-              <div 
-                key={c.label} 
-                className={`hp-card p-6 flex flex-col items-start ${c.colSpan}`}
-              >
+              <div key={c.label} className={`hp-card p-6 flex flex-col items-start ${c.colSpan}`}>
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-(--hp-surface-raised) border border-(--hp-line) text-(--hp-primary)">
                   <c.icon className="h-5 w-5" aria-hidden="true" />
                 </div>
-                
+
                 <div className="mt-6 flex-grow">
                   <p className="hp-font-mono text-[11px] font-semibold tracking-[0.15em] text-(--hp-ink-soft) uppercase">
                     {c.label}
                   </p>
-                  
+
                   {c.href ? (
                     <a
                       href={c.href}
@@ -89,7 +99,8 @@ export default function ContactPage() {
             <div className="inline-flex items-center gap-3 rounded-md border border-(--hp-line) bg-white px-5 py-2.5 shadow-sm">
               <span className="flex h-2 w-2 rounded-full bg-(--hp-primary)" aria-hidden="true" />
               <p className="text-sm text-(--hp-ink-soft)">
-                Kami biasanya membalas email dalam <strong className="text-(--hp-ink) font-semibold">1×24 jam</strong> pada hari kerja.
+                Kami biasanya membalas email dalam{" "}
+                <strong className="text-(--hp-ink) font-semibold">1×24 jam</strong> pada hari kerja.
               </p>
             </div>
           </div>
